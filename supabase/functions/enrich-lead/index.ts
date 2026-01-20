@@ -1,120 +1,87 @@
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-const EXTRACTION_PROMPT = `Analyze the following website content and extract structured information. Return a JSON object with these fields:
-
-- phone: string | null - Any phone number found (format as digits with dashes)
-- industry: string | null - The business industry/category (e.g., "Real Estate", "Legal", "Healthcare", "Construction", "Food & Beverage", "Technology", "Retail", "Finance", "Education", "Other")
-- company_name: string | null - The company or business name
-- company_description: string | null - A brief 1-2 sentence description of what the company does
-- services: string[] - List of main services/products offered (max 5)
-- location: string | null - City/State or address if found
-
-Only include fields where you have confident data. Return null for fields without clear information.
-
-Website content:
-`;
-
 Deno.serve(async (req) => {
-  if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
-  }
+  if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { markdown, url } = await req.json();
+    const { leadId, url } = await req.json();
+    if (!leadId || !url) return new Response(JSON.stringify({ error: 'leadId and url required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
-    if (!markdown) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'Website content (markdown) is required' }),
-        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
 
-    const LOVABLE_API_KEY = Deno.env.get('LOVABLE_API_KEY');
-    if (!LOVABLE_API_KEY) {
-      return new Response(
-        JSON.stringify({ success: false, error: 'AI not configured' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
+    // Scrape website
+    const firecrawlKey = Deno.env.get('FIRECRAWL_API_KEY');
+    let formattedUrl = url.trim();
+    if (!formattedUrl.startsWith('http')) formattedUrl = `https://${formattedUrl}`;
 
-    console.log('Enriching lead from URL:', url);
+    console.log('Scraping for enrichment:', formattedUrl);
 
-    // Truncate content to avoid token limits
-    const truncatedContent = markdown.slice(0, 8000);
-
-    const response = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+    const scrapeRes = await fetch('https://api.firecrawl.dev/v1/scrape', {
       method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${LOVABLE_API_KEY}`,
-        'Content-Type': 'application/json',
-      },
+      headers: { 'Authorization': `Bearer ${firecrawlKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ url: formattedUrl, formats: ['markdown'], onlyMainContent: true }),
+    });
+    const scrapeData = await scrapeRes.json();
+    const content = scrapeData.data?.markdown || scrapeData.markdown || '';
+
+    if (!content) {
+      return new Response(JSON.stringify({ success: false, error: 'No content scraped' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+
+    // Use AI to extract structured data
+    const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
+      method: 'POST',
+      headers: { 'Authorization': `Bearer ${Deno.env.get('LOVABLE_API_KEY')}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'google/gemini-3-flash-preview',
-        messages: [
-          { role: 'user', content: EXTRACTION_PROMPT + truncatedContent }
-        ],
-        tools: [
-          {
-            type: 'function',
-            function: {
-              name: 'extract_lead_info',
-              description: 'Extract structured lead information from website content',
-              parameters: {
-                type: 'object',
-                properties: {
-                  phone: { type: 'string', description: 'Phone number found on the website' },
-                  industry: { type: 'string', description: 'Business industry/category' },
-                  company_name: { type: 'string', description: 'Company or business name' },
-                  company_description: { type: 'string', description: 'Brief description of the company' },
-                  services: { type: 'array', items: { type: 'string' }, description: 'Main services offered' },
-                  location: { type: 'string', description: 'Business location' },
-                },
-                required: [],
-                additionalProperties: false,
+        messages: [{ role: 'user', content: `Extract from this website: industry (one word), phone number if found. Return JSON: {"industry": "...", "phone": "..."}
+
+${content.slice(0, 4000)}` }],
+        tools: [{
+          type: 'function',
+          function: {
+            name: 'extract_business_data',
+            parameters: {
+              type: 'object',
+              properties: {
+                industry: { type: 'string' },
+                phone: { type: 'string' },
               },
             },
           },
-        ],
-        tool_choice: { type: 'function', function: { name: 'extract_lead_info' } },
+        }],
+        tool_choice: { type: 'function', function: { name: 'extract_business_data' } },
       }),
     });
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error('AI gateway error:', response.status, errorText);
-      return new Response(
-        JSON.stringify({ success: false, error: 'AI service error' }),
-        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-    }
-
-    const aiData = await response.json();
+    const aiData = await aiRes.json();
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    
-    let extractedData = {};
-    if (toolCall?.function?.arguments) {
-      try {
-        extractedData = JSON.parse(toolCall.function.arguments);
-      } catch (e) {
-        console.error('Failed to parse AI response:', e);
+    const extracted = toolCall ? JSON.parse(toolCall.function.arguments) : {};
+
+    console.log('Extracted data:', extracted);
+
+    // Update lead
+    const updates: Record<string, string> = {};
+    if (extracted.industry) updates.industry = extracted.industry;
+    if (extracted.phone) updates.phone = extracted.phone;
+
+    if (Object.keys(updates).length > 0) {
+      const { error } = await supabase.from('leads').update(updates).eq('id', leadId);
+      if (error) {
+        console.error('Database update error:', error);
+        return new Response(JSON.stringify({ success: false, error: 'Failed to update lead' }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
       }
     }
 
-    console.log('Extracted data:', extractedData);
-
-    return new Response(
-      JSON.stringify({ success: true, data: extractedData }),
-      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
-  } catch (error: unknown) {
-    console.error('Enrich error:', error);
-    const message = error instanceof Error ? error.message : 'Unknown error';
-    return new Response(
-      JSON.stringify({ success: false, error: message }),
-      { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-    );
+    return new Response(JSON.stringify({ success: true, extracted }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+  } catch (e) {
+    console.error('Enrich error:', e);
+    const message = e instanceof Error ? e.message : 'Unknown error';
+    return new Response(JSON.stringify({ error: message }), { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
   }
 });
