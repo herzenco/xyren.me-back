@@ -22,66 +22,87 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     let mounted = true;
 
-    // Get initial session
-    const initSession = async () => {
+    const withTimeout = async <T,>(p: PromiseLike<T>, ms: number, label: string): Promise<T> => {
+      let t: number | undefined;
       try {
-        const { data: { session } } = await supabase.auth.getSession();
-        
-        if (!mounted) return;
-        
-        setSession(session);
-        setUser(session?.user ?? null);
-        
-        if (session?.user) {
-          const { data: roles } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-          
-          if (mounted) {
-            setIsAdmin(roles?.role === 'admin');
-          }
-        }
-      } catch (error) {
-        console.error('Auth init error:', error);
+        return await Promise.race([
+          Promise.resolve(p),
+          new Promise<T>((_, reject) => {
+            t = window.setTimeout(() => reject(new Error(`${label} timed out`)), ms) as unknown as number;
+          }),
+        ]);
       } finally {
-        if (mounted) {
-          setIsLoading(false);
-        }
+        if (t !== undefined) window.clearTimeout(t);
       }
     };
 
-    initSession();
+    const checkAdminRole = async (userId: string) => {
+      try {
+        const rolePromise = supabase
+          .from('user_roles')
+          .select('role')
+          .eq('user_id', userId)
+          .maybeSingle();
 
-    // Set up auth state listener
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+        const { data: roles } = await withTimeout(rolePromise, 4000, 'Role check');
+        if (mounted) setIsAdmin(roles?.role === 'admin');
+      } catch (error) {
+        console.warn('Role check failed:', error);
+        if (mounted) setIsAdmin(false);
+      }
+    };
+
+    // Safety valve: never let the app spin forever
+    const safety = window.setTimeout(() => {
+      if (mounted) setIsLoading(false);
+    }, 6000);
+
+    // INITIAL load (controls isLoading)
+    const initializeAuth = async () => {
+      try {
+        const sessionPromise = supabase.auth.getSession();
+        const { data: { session } } = await withTimeout(sessionPromise, 5000, 'Auth session');
+
         if (!mounted) return;
-        
+
         setSession(session);
         setUser(session?.user ?? null);
-        
+
         if (session?.user) {
-          const { data: roles } = await supabase
-            .from('user_roles')
-            .select('role')
-            .eq('user_id', session.user.id)
-            .maybeSingle();
-          
-          if (mounted) {
-            setIsAdmin(roles?.role === 'admin');
-          }
+          await checkAdminRole(session.user.id);
         } else {
           setIsAdmin(false);
         }
-        
-        setIsLoading(false);
+      } catch (error) {
+        console.warn('Auth init failed:', error);
+        if (mounted) {
+          setSession(null);
+          setUser(null);
+          setIsAdmin(false);
+        }
+      } finally {
+        if (mounted) setIsLoading(false);
       }
-    );
+    };
+
+    initializeAuth();
+
+    // Listener for ONGOING auth changes (does NOT control initial isLoading)
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (!mounted) return;
+      setSession(session);
+      setUser(session?.user ?? null);
+
+      if (session?.user) {
+        void checkAdminRole(session.user.id);
+      } else {
+        setIsAdmin(false);
+      }
+    });
 
     return () => {
       mounted = false;
+      window.clearTimeout(safety);
       subscription.unsubscribe();
     };
   }, []);
