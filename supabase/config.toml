@@ -1,1 +1,16 @@
 project_id = "lyawgllawtjtdtqjnhjy"
+
+[functions.chat]
+verify_jwt = false
+
+[functions.firecrawl-scrape]
+verify_jwt = false
+
+[functions.enrich-lead]
+verify_jwt = false
+
+[functions.zapier-webhook]
+verify_jwt = false
+
+[functions.create-admin]
+verify_jwt = false
