@@ -20,21 +20,58 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [isAdmin, setIsAdmin] = useState(false);
 
   useEffect(() => {
-    // Set up auth state listener FIRST
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(
-      async (event, session) => {
+    let mounted = true;
+
+    // Get initial session
+    const initSession = async () => {
+      try {
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (!mounted) return;
+        
         setSession(session);
         setUser(session?.user ?? null);
         
         if (session?.user) {
-          // Check admin role
           const { data: roles } = await supabase
             .from('user_roles')
             .select('role')
             .eq('user_id', session.user.id)
             .maybeSingle();
           
-          setIsAdmin(roles?.role === 'admin');
+          if (mounted) {
+            setIsAdmin(roles?.role === 'admin');
+          }
+        }
+      } catch (error) {
+        console.error('Auth init error:', error);
+      } finally {
+        if (mounted) {
+          setIsLoading(false);
+        }
+      }
+    };
+
+    initSession();
+
+    // Set up auth state listener
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (!mounted) return;
+        
+        setSession(session);
+        setUser(session?.user ?? null);
+        
+        if (session?.user) {
+          const { data: roles } = await supabase
+            .from('user_roles')
+            .select('role')
+            .eq('user_id', session.user.id)
+            .maybeSingle();
+          
+          if (mounted) {
+            setIsAdmin(roles?.role === 'admin');
+          }
         } else {
           setIsAdmin(false);
         }
@@ -43,27 +80,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       }
     );
 
-    // THEN check for existing session
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setSession(session);
-      setUser(session?.user ?? null);
-      
-      if (session?.user) {
-        supabase
-          .from('user_roles')
-          .select('role')
-          .eq('user_id', session.user.id)
-          .maybeSingle()
-          .then(({ data: roles }) => {
-            setIsAdmin(roles?.role === 'admin');
-            setIsLoading(false);
-          });
-      } else {
-        setIsLoading(false);
-      }
-    });
-
     return () => {
+      mounted = false;
       subscription.unsubscribe();
     };
   }, []);
