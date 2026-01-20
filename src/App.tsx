@@ -7,6 +7,7 @@ import { AuthProvider } from "@/hooks/useAuth";
 import ProtectedRoute from "@/components/ProtectedRoute";
 import Auth from "./pages/Auth";
 import Dashboard from "./pages/Dashboard";
+import TestFunctions from "./pages/TestFunctions";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,7 +29,8 @@ const App = () => (
                   <Dashboard />
                 </ProtectedRoute>
               }
-            />
+              />
+            <Route path="/test-functions" element={<TestFunctions />} />
             <Route path="*" element={<NotFound />} />
           </Routes>
         </BrowserRouter>
