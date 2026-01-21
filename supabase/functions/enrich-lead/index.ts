@@ -9,7 +9,12 @@ Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response(null, { headers: corsHeaders });
 
   try {
-    const { leadId, url } = await req.json();
+    const text = await req.text();
+    if (!text) {
+      return new Response(JSON.stringify({ error: 'Request body required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
+    }
+    
+    const { leadId, url } = JSON.parse(text);
     if (!leadId || !url) return new Response(JSON.stringify({ error: 'leadId and url required' }), { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
 
     const supabase = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!);
