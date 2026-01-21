@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useMemo, useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, subDays, isAfter } from 'date-fns';
 import { motion } from 'framer-motion';
 import { Users, TrendingUp, Zap, FileText, Download } from 'lucide-react';
@@ -49,6 +49,7 @@ const sourceFilters = [
 
 export function LeadsTab() {
   const [sourceFilter, setSourceFilter] = useState('all');
+  const queryClient = useQueryClient();
 
   const { data: leads, isLoading } = useQuery({
     queryKey: ['leads'],
@@ -62,6 +63,29 @@ export function LeadsTab() {
       return data as Lead[];
     },
   });
+
+  // Subscribe to realtime changes on leads table
+  useEffect(() => {
+    const channel = supabase
+      .channel('leads-realtime')
+      .on(
+        'postgres_changes',
+        {
+          event: '*',
+          schema: 'public',
+          table: 'leads',
+        },
+        () => {
+          // Invalidate and refetch leads when any change occurs
+          queryClient.invalidateQueries({ queryKey: ['leads'] });
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const stats = useMemo(() => {
     if (!leads) return { total: 0, thisWeek: 0, heroModal: 0, projectPlan: 0 };
