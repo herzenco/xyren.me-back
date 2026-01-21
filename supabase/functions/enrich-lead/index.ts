@@ -32,11 +32,14 @@ Deno.serve(async (req) => {
       body: JSON.stringify({ url: formattedUrl, formats: ['markdown'], onlyMainContent: true }),
     });
     const scrapeData = await scrapeRes.json();
-    const content = scrapeData.data?.markdown || scrapeData.markdown || '';
+    const scrapedContent = scrapeData.data?.markdown || scrapeData.markdown || '';
 
-    if (!content) {
+    if (!scrapedContent) {
       return new Response(JSON.stringify({ success: false, error: 'No content scraped' }), { headers: { ...corsHeaders, 'Content-Type': 'application/json' } });
     }
+
+    console.log('Scraped content length:', scrapedContent.length);
+    console.log('Content preview:', scrapedContent.slice(0, 500));
 
     // Use AI to extract structured data
     const aiRes = await fetch('https://ai.gateway.lovable.dev/v1/chat/completions', {
@@ -44,9 +47,17 @@ Deno.serve(async (req) => {
       headers: { 'Authorization': `Bearer ${Deno.env.get('LOVABLE_API_KEY')}`, 'Content-Type': 'application/json' },
       body: JSON.stringify({
         model: 'google/gemini-3-flash-preview',
-        messages: [{ role: 'user', content: `Extract from this website: industry (one word), phone number if found. Return JSON: {"industry": "...", "phone": "..."}
+        messages: [{
+          role: 'user',
+          content: `Analyze this business website content and extract:
+1. The primary industry (single word like "Technology", "Healthcare", "Retail", "Marketing", "Finance", etc.)
+2. Any phone number found on the page
 
-${content.slice(0, 4000)}` }],
+Website content:
+${scrapedContent.slice(0, 4000)}
+
+Respond using the extract_business_data function.`
+        }],
         tools: [{
           type: 'function',
           function: {
@@ -54,8 +65,8 @@ ${content.slice(0, 4000)}` }],
             parameters: {
               type: 'object',
               properties: {
-                industry: { type: 'string' },
-                phone: { type: 'string' },
+                industry: { type: 'string', description: 'Primary industry of the business' },
+                phone: { type: 'string', description: 'Phone number if found' },
               },
             },
           },
@@ -65,8 +76,34 @@ ${content.slice(0, 4000)}` }],
     });
 
     const aiData = await aiRes.json();
+    console.log('AI response status:', aiRes.status);
+    console.log('AI response:', JSON.stringify(aiData));
+
+    // Try tool call first, then fallback to content parsing
+    let extracted: { industry?: string; phone?: string } = {};
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
-    const extracted = toolCall ? JSON.parse(toolCall.function.arguments) : {};
+    if (toolCall?.function?.arguments) {
+      try {
+        extracted = JSON.parse(toolCall.function.arguments);
+      } catch (e) {
+        console.log('Failed to parse tool call arguments:', e);
+      }
+    }
+    
+    // Fallback: try to parse from message content
+    if (!extracted.industry && !extracted.phone) {
+      const msgContent = aiData.choices?.[0]?.message?.content;
+      if (msgContent) {
+        const jsonMatch = msgContent.match(/\{[\s\S]*\}/);
+        if (jsonMatch) {
+          try {
+            extracted = JSON.parse(jsonMatch[0]);
+          } catch (e) {
+            console.log('Failed to parse content JSON:', e);
+          }
+        }
+      }
+    }
 
     console.log('Extracted data:', extracted);
 
