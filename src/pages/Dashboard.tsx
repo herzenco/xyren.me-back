@@ -18,9 +18,43 @@ export default function Dashboard() {
   const handleEnrichLeads = async () => {
     setIsEnriching(true);
     try {
-      const { error } = await supabase.functions.invoke('enrich-lead');
-      if (error) throw error;
-      toast({ title: 'Success', description: 'Lead enrichment started' });
+      // Fetch leads with websites that haven't been enriched (no industry yet)
+      const { data: leads, error: fetchError } = await supabase
+        .from('leads')
+        .select('id, website')
+        .not('website', 'is', null)
+        .is('industry', null);
+
+      if (fetchError) throw fetchError;
+
+      if (!leads || leads.length === 0) {
+        toast({ title: 'Info', description: 'No leads to enrich' });
+        setIsEnriching(false);
+        return;
+      }
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const lead of leads) {
+        try {
+          const { error } = await supabase.functions.invoke('enrich-lead', {
+            body: { leadId: lead.id, url: lead.website },
+          });
+          if (error) {
+            errorCount++;
+          } else {
+            successCount++;
+          }
+        } catch {
+          errorCount++;
+        }
+      }
+
+      toast({
+        title: 'Enrichment Complete',
+        description: `${successCount} leads enriched${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+      });
     } catch {
       toast({ title: 'Error', description: 'Failed to enrich leads', variant: 'destructive' });
     }
