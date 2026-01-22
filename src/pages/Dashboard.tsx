@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LeadsTab } from '@/components/dashboard/LeadsTab';
 import { ChatTab } from '@/components/dashboard/ChatTab';
+import { ConversationsTab } from '@/components/dashboard/ConversationsTab';
 import { AnalyticsTab } from '@/components/dashboard/AnalyticsTab';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
@@ -94,10 +94,12 @@ export default function Dashboard() {
         <Tabs defaultValue="leads" className="space-y-6">
           <TabsList className="bg-muted/50">
             <TabsTrigger value="leads">Leads</TabsTrigger>
-            <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="conversations">Conversations</TabsTrigger>
+            <TabsTrigger value="chat">Chat Stats</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
           <TabsContent value="leads"><LeadsTab /></TabsContent>
+          <TabsContent value="conversations"><ConversationsTab /></TabsContent>
           <TabsContent value="chat"><ChatTab /></TabsContent>
           <TabsContent value="analytics"><AnalyticsTab /></TabsContent>
         </Tabs>
