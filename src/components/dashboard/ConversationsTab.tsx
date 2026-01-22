@@ -325,6 +325,10 @@ export function ConversationsTab() {
         session={selectedSession}
         open={!!selectedSession}
         onOpenChange={(open) => !open && setSelectedSession(null)}
+        onLeadLinked={() => {
+          queryClient.invalidateQueries({ queryKey: ['chat_interactions_full'] });
+          setSelectedSession(null);
+        }}
       />
     </div>
   );
