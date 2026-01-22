@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
+import { useState } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, parseISO } from 'date-fns';
 import ReactMarkdown from 'react-markdown';
-import { MessageSquare, User, Globe, Mail, Phone, Building2, FileText, ExternalLink } from 'lucide-react';
+import { MessageSquare, User, Globe, Mail, Phone, Building2, FileText, ExternalLink, Link2, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,16 @@ import {
 } from '@/components/ui/dialog';
 import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
-import { Separator } from '@/components/ui/separator';
+import { Button } from '@/components/ui/button';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
+import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
 
 type ConversationMessage = {
@@ -56,13 +66,53 @@ interface ConversationDetailModalProps {
   session: GroupedSession | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  onLeadLinked?: () => void;
 }
 
 export function ConversationDetailModal({
   session,
   open,
   onOpenChange,
+  onLeadLinked,
 }: ConversationDetailModalProps) {
+  const [selectedLeadId, setSelectedLeadId] = useState<string>('');
+  const queryClient = useQueryClient();
+
+  // Fetch available leads for linking
+  const { data: leads } = useQuery({
+    queryKey: ['leads_for_linking'],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('leads')
+        .select('id, full_name, email')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      if (error) throw error;
+      return data;
+    },
+    enabled: open && !session?.lead_id,
+  });
+
+  // Mutation to link conversation to lead
+  const linkMutation = useMutation({
+    mutationFn: async ({ sessionId, leadId }: { sessionId: string; leadId: string }) => {
+      const { error } = await supabase
+        .from('chat_interactions')
+        .update({ lead_id: leadId })
+        .eq('session_id', sessionId);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      toast.success('Conversation linked to lead');
+      queryClient.invalidateQueries({ queryKey: ['chat_interactions'] });
+      setSelectedLeadId('');
+      onLeadLinked?.();
+    },
+    onError: (error) => {
+      toast.error('Failed to link conversation: ' + error.message);
+    },
+  });
+
   if (!session) return null;
 
   const { collected_data, conversation_history, interactions } = session;
@@ -80,12 +130,53 @@ export function ConversationDetailModal({
           </DialogTitle>
           <div className="flex items-center gap-2 text-sm text-muted-foreground mt-1">
             <span>Started {format(parseISO(session.started_at), 'MMM d, yyyy h:mm a')}</span>
-            {session.lead_id && (
+            {session.lead_id ? (
               <Badge variant="secondary" className="text-xs bg-success/20 text-success">
                 Lead Linked
               </Badge>
+            ) : (
+              <Badge variant="outline" className="text-xs">
+                No Lead
+              </Badge>
             )}
           </div>
+
+          {/* Link to Lead Action */}
+          {!session.lead_id && leads && leads.length > 0 && (
+            <div className="flex items-center gap-2 mt-3 p-3 rounded-lg bg-muted/50 border border-border">
+              <Link2 className="h-4 w-4 text-muted-foreground shrink-0" />
+              <Select value={selectedLeadId} onValueChange={setSelectedLeadId}>
+                <SelectTrigger className="flex-1 h-8 text-sm">
+                  <SelectValue placeholder="Select a lead to link..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {leads.map((lead) => (
+                    <SelectItem key={lead.id} value={lead.id}>
+                      {lead.full_name} ({lead.email})
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Button
+                size="sm"
+                disabled={!selectedLeadId || linkMutation.isPending}
+                onClick={() => {
+                  if (selectedLeadId && session) {
+                    linkMutation.mutate({
+                      sessionId: session.session_id,
+                      leadId: selectedLeadId,
+                    });
+                  }
+                }}
+              >
+                {linkMutation.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  'Link'
+                )}
+              </Button>
+            </div>
+          )}
         </DialogHeader>
 
         <div className="flex-1 overflow-hidden flex flex-col">
