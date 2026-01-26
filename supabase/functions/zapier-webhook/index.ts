@@ -36,20 +36,30 @@ Deno.serve(async (req) => {
     console.log('Sending lead to Zapier:', leadData.email, leadData.full_name);
 
     const payload = {
-      // Lead details
-      id: leadData.id,
+      // Top-level fields for easy Zapier mapping
+      name: leadData.full_name,
       email: leadData.email,
-      full_name: leadData.full_name,
-      phone: leadData.phone || null,
-      website: leadData.website || null,
-      industry: leadData.industry || null,
-      source: leadData.source || 'unknown',
-      lead_score: leadData.lead_score || 0,
-      notes: leadData.notes || null,
       
-      // Metadata
-      timestamp: new Date().toISOString(),
-      created_at: leadData.created_at || new Date().toISOString(),
+      // Contact info group
+      contact: {
+        phone: leadData.phone || null,
+        website: leadData.website || null,
+      },
+      
+      // Lead qualification group
+      qualification: {
+        score: leadData.lead_score || 0,
+        source: leadData.source || 'unknown',
+        industry: leadData.industry || null,
+      },
+      
+      // Metadata group
+      metadata: {
+        id: leadData.id,
+        notes: leadData.notes || null,
+        timestamp: new Date().toISOString(),
+        created_at: leadData.created_at || new Date().toISOString(),
+      },
     };
 
     const response = await fetch(webhookUrl, {
