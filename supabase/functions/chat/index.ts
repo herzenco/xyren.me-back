@@ -191,20 +191,6 @@ Deno.serve(async (req) => {
           } else {
             console.log('Lead created:', newLead?.id, 'name:', detectedName, 'score:', leadScore);
             
-            // Trigger Zapier webhook for new lead
-            fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/zapier-webhook`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                email: leadData.email,
-                full_name: detectedName,
-                website: detectedWebsite,
-                phone: detectedPhone,
-                source: 'chatbot',
-                lead_score: leadScore,
-              }),
-            }).catch(e => console.error('Zapier webhook failed:', e));
-            
             // Trigger enrichment if website provided
             if (detectedWebsite && newLead?.id) {
               fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/enrich-lead`, {
