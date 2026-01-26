@@ -101,6 +101,7 @@ export type Database = {
           engagement_depth: number | null
           full_name: string
           id: string
+          industry: string | null
           intent_signals: Json | null
           lead_score: number | null
           notes: string | null
@@ -115,6 +116,7 @@ export type Database = {
           engagement_depth?: number | null
           full_name: string
           id?: string
+          industry?: string | null
           intent_signals?: Json | null
           lead_score?: number | null
           notes?: string | null
@@ -129,6 +131,7 @@ export type Database = {
           engagement_depth?: number | null
           full_name?: string
           id?: string
+          industry?: string | null
           intent_signals?: Json | null
           lead_score?: number | null
           notes?: string | null
