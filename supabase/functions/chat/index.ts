@@ -191,6 +191,21 @@ Deno.serve(async (req) => {
           } else {
             console.log('Lead created:', newLead?.id, 'name:', detectedName, 'score:', leadScore);
             
+            // Send new lead to Zapier → ClickUp
+            fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/zapier-webhook`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                id: newLead?.id,
+                email: placeholderEmail,
+                full_name: detectedName,
+                phone: detectedPhone,
+                website: detectedWebsite,
+                source: 'chatbot',
+                lead_score: leadScore,
+              }),
+            }).catch(e => console.error('Zapier webhook failed:', e));
+            
             // Trigger enrichment if website provided
             if (detectedWebsite && newLead?.id) {
               fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/enrich-lead`, {
