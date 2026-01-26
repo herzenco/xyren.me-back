@@ -27,7 +27,6 @@ type Lead = {
   email: string;
   phone: string | null;
   website: string | null;
-  industry: string | null;
   source: string | null;
   lead_score: number | null;
   qualification_status: string | null;
@@ -41,10 +40,6 @@ const sourceFilters = [
   { value: 'hero_modal', label: 'Hero' },
   { value: 'project_plan_modal', label: 'Project Plan' },
   { value: 'chatbot', label: 'Chatbot' },
-  { value: 'real_estate', label: 'Real Estate' },
-  { value: 'professional_services', label: 'Professional' },
-  { value: 'home_services', label: 'Home Services' },
-  { value: 'education', label: 'Education' },
 ];
 
 export function LeadsTab() {
@@ -108,13 +103,12 @@ export function LeadsTab() {
   const handleExportCSV = () => {
     if (!leads || leads.length === 0) return;
 
-    const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Date'];
+    const headers = ['Name', 'Email', 'Phone', 'Website', 'Source', 'Score', 'Date'];
     const rows = leads.map((l) => [
       l.full_name,
       l.email,
       l.phone || '',
       l.website || '',
-      l.industry || '',
       l.source || '',
       l.lead_score?.toString() || '0',
       format(new Date(l.created_at), 'yyyy-MM-dd'),
@@ -196,7 +190,6 @@ export function LeadsTab() {
                 <TableHead>Email</TableHead>
                 <TableHead>Phone</TableHead>
                 <TableHead>Website</TableHead>
-                <TableHead>Industry</TableHead>
                 <TableHead>Source</TableHead>
                 <TableHead className="text-right">Date</TableHead>
               </TableRow>
@@ -204,7 +197,7 @@ export function LeadsTab() {
             <TableBody>
               {filteredLeads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+                  <TableCell colSpan={7} className="h-32 text-center text-muted-foreground">
                     No leads found
                   </TableCell>
                 </TableRow>
@@ -232,9 +225,6 @@ export function LeadsTab() {
                       ) : (
                         '—'
                       )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {lead.industry || '—'}
                     </TableCell>
                     <TableCell>
                       <span className="rounded-full bg-muted px-2 py-1 text-xs">
