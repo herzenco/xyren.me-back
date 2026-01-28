@@ -49,14 +49,14 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[40px]"></TableHead>
-            <TableHead>Name</TableHead>
-            <TableHead>Email</TableHead>
-            <TableHead>Phone</TableHead>
-            <TableHead>Source</TableHead>
-            <TableHead className="w-[80px]">Score</TableHead>
-            <TableHead className="w-[90px]">Status</TableHead>
-            <TableHead className="text-right">Date</TableHead>
+            <TableHead className="w-10"></TableHead>
+            <TableHead className="min-w-[140px]">Name</TableHead>
+            <TableHead className="min-w-[200px]">Email</TableHead>
+            <TableHead className="min-w-[130px]">Phone</TableHead>
+            <TableHead className="min-w-[100px]">Source</TableHead>
+            <TableHead className="w-20 text-center">Score</TableHead>
+            <TableHead className="w-20 text-center">Status</TableHead>
+            <TableHead className="w-28 text-right">Date</TableHead>
           </TableRow>
         </TableHeader>
         <TableBody>
@@ -79,7 +79,7 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
                     className="cursor-pointer transition-colors hover:bg-muted/50"
                     onClick={() => toggleRow(lead.id)}
                   >
-                    <TableCell>
+                    <TableCell className="p-2">
                       <Button variant="ghost" size="icon" className="h-6 w-6">
                         {isExpanded ? (
                           <ChevronDown className="h-4 w-4" />
@@ -88,24 +88,24 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
                         )}
                       </Button>
                     </TableCell>
-                    <TableCell className="font-medium">{lead.full_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{lead.email}</TableCell>
-                    <TableCell className="text-muted-foreground">
+                    <TableCell className="font-medium whitespace-nowrap">{lead.full_name}</TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap">{lead.email}</TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap">
                       {lead.phone || '—'}
                     </TableCell>
                     <TableCell>
-                      <span className="rounded-full bg-muted px-2 py-1 text-xs">
+                      <span className="rounded-full bg-muted px-2 py-1 text-xs whitespace-nowrap">
                         {formatSource(lead.source || '')}
                       </span>
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-center">
                       <LeadScoreBadge score={lead.lead_score} />
                     </TableCell>
-                    <TableCell>
+                    <TableCell className="text-center">
                       <LeadStatusBadge status={lead.qualification_status} />
                     </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {format(new Date(lead.created_at), 'MMM d, yyyy')}
+                    <TableCell className="text-right text-muted-foreground whitespace-nowrap">
+                      {format(new Date(lead.created_at), 'MMM d')}
                     </TableCell>
                   </TableRow>
                   <AnimatePresence>
