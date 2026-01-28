@@ -118,21 +118,25 @@ Deno.serve(async (req) => {
             .select('id, lead_score, website, email, phone')
             .eq('email', detectedEmail)
             .maybeSingle();
-          existingLead = data;
+          existingLead = data as { id: string; lead_score: number | null; website: string | null; email: string | null; phone: string | null } | null;
         }
 
         if (!existingLead) {
           // Check if we have a lead by session in metadata (for leads without email yet)
           const { data } = await supabase
             .from('leads')
-            .select('id, lead_score, website, email')
+            .select('id, lead_score, website, email, phone')
             .eq('source', 'chatbot')
             .eq('notes', `session:${sessionId}`)
             .maybeSingle();
-          existingLead = data;
+          existingLead = data as { id: string; lead_score: number | null; website: string | null; email: string | null; phone: string | null } | null;
         }
 
+        let leadId: string | null = null;
+        let isNewLead = false;
+
         if (existingLead) {
+          leadId = existingLead.id;
           // Update existing lead if we have new info or higher score
           const updates: Record<string, unknown> = {};
           
@@ -167,6 +171,7 @@ Deno.serve(async (req) => {
           }
         } else {
           // Create new lead - use placeholder email if we don't have one yet
+          isNewLead = true;
           const placeholderEmail = detectedEmail || `pending_${sessionId}@chatbot.temp`;
           
           const leadData: Record<string, unknown> = {
@@ -189,35 +194,40 @@ Deno.serve(async (req) => {
           if (insertError) {
             console.error('Lead insert error:', insertError);
           } else {
-            console.log('Lead created:', newLead?.id, 'name:', detectedName, 'score:', leadScore);
-            
-            // Send new lead to Zapier → ClickUp
-            fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/zapier-webhook`, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                id: newLead?.id,
-                email: placeholderEmail,
-                full_name: detectedName,
-                phone: detectedPhone,
-                website: detectedWebsite,
-                source: 'chatbot',
-                lead_score: leadScore,
-              }),
-            }).catch(e => console.error('Zapier webhook failed:', e));
+            leadId = newLead?.id || null;
+            console.log('Lead created:', leadId, 'name:', detectedName, 'score:', leadScore);
             
             // Trigger enrichment if website provided
-            if (detectedWebsite && newLead?.id) {
+            if (detectedWebsite && leadId) {
               fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/enrich-lead`, {
                 method: 'POST',
                 headers: {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${Deno.env.get('SUPABASE_ANON_KEY')}`,
                 },
-                body: JSON.stringify({ leadId: newLead.id, url: detectedWebsite }),
+                body: JSON.stringify({ leadId, url: detectedWebsite }),
               }).catch(e => console.error('Enrichment trigger failed:', e));
             }
           }
+        }
+
+        // Send to Zapier if we have a real email (not placeholder) - works for both new and updated leads
+        const realEmail = detectedEmail || (existingLead?.email && !existingLead.email.includes('@chatbot.temp') ? existingLead.email : null);
+        if (realEmail && leadId) {
+          console.log('Sending lead to Zapier:', realEmail, detectedName);
+          fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/zapier-webhook`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              id: leadId,
+              email: realEmail,
+              full_name: detectedName,
+              phone: detectedPhone || existingLead?.phone,
+              website: detectedWebsite || existingLead?.website,
+              source: 'chatbot',
+              lead_score: leadScore,
+            }),
+          }).catch(e => console.error('Zapier webhook failed:', e));
         }
       } catch (dbError) {
         console.error('Database error:', dbError);
