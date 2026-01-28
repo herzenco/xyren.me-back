@@ -107,6 +107,7 @@ export type Database = {
           notes: string | null
           phone: string | null
           qualification_status: string | null
+          questionnaire_answers: Json | null
           source: string | null
           website: string | null
         }
@@ -122,6 +123,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           qualification_status?: string | null
+          questionnaire_answers?: Json | null
           source?: string | null
           website?: string | null
         }
@@ -137,6 +139,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           qualification_status?: string | null
+          questionnaire_answers?: Json | null
           source?: string | null
           website?: string | null
         }
