@@ -6,45 +6,17 @@ import { Users, TrendingUp, Zap, FileText, Download } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { StatsCard } from './StatsCard';
 import { AreaChartCard } from './AreaChartCard';
-import { LeadScoreBadge } from './LeadScoreBadge';
-import { formatSource } from '@/lib/leadScoring';
+import { LeadFilters } from './leads/LeadFilters';
+import { LeadsTable } from './leads/LeadsTable';
 import { Button } from '@/components/ui/button';
-import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import {
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-
-type Lead = {
-  id: string;
-  created_at: string;
-  full_name: string;
-  email: string;
-  phone: string | null;
-  website: string | null;
-  industry: string | null;
-  source: string | null;
-  lead_score: number | null;
-  qualification_status: string | null;
-  notes: string | null;
-  intent_signals: Record<string, boolean> | null;
-  engagement_depth: number | null;
-};
-
-const sourceFilters = [
-  { value: 'all', label: 'All' },
-  { value: 'hero_modal', label: 'Hero' },
-  { value: 'project_plan_modal', label: 'Project Plan' },
-  { value: 'chatbot', label: 'Chatbot' },
-];
+import type { Lead, SortField, SortDirection } from './leads/types';
 
 export function LeadsTab() {
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const queryClient = useQueryClient();
 
   const { data: leads, isLoading } = useQuery({
@@ -60,21 +32,14 @@ export function LeadsTab() {
     },
   });
 
-  // Subscribe to realtime changes on leads table
+  // Subscribe to realtime changes
   useEffect(() => {
     const channel = supabase
       .channel('leads-realtime')
       .on(
         'postgres_changes',
-        {
-          event: '*',
-          schema: 'public',
-          table: 'leads',
-        },
-        () => {
-          // Invalidate and refetch leads when any change occurs
-          queryClient.invalidateQueries({ queryKey: ['leads'] });
-        }
+        { event: '*', schema: 'public', table: 'leads' },
+        () => queryClient.invalidateQueries({ queryKey: ['leads'] })
       )
       .subscribe();
 
@@ -95,16 +60,54 @@ export function LeadsTab() {
     };
   }, [leads]);
 
-  const filteredLeads = useMemo(() => {
+  const filteredAndSortedLeads = useMemo(() => {
     if (!leads) return [];
-    if (sourceFilter === 'all') return leads;
-    return leads.filter((l) => l.source === sourceFilter);
-  }, [leads, sourceFilter]);
+
+    let result = leads;
+
+    // Filter by source
+    if (sourceFilter !== 'all') {
+      result = result.filter((l) => l.source === sourceFilter);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (l) =>
+          l.full_name.toLowerCase().includes(query) ||
+          l.email.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      let aVal: number;
+      let bVal: number;
+
+      if (sortField === 'lead_score') {
+        aVal = a.lead_score ?? 0;
+        bVal = b.lead_score ?? 0;
+      } else {
+        aVal = new Date(a.created_at).getTime();
+        bVal = new Date(b.created_at).getTime();
+      }
+
+      return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+
+    return result;
+  }, [leads, sourceFilter, searchQuery, sortField, sortDirection]);
+
+  const handleSortChange = (field: SortField, direction: SortDirection) => {
+    setSortField(field);
+    setSortDirection(direction);
+  };
 
   const handleExportCSV = () => {
     if (!leads || leads.length === 0) return;
 
-    const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Date'];
+    const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Status', 'Date'];
     const rows = leads.map((l) => [
       l.full_name,
       l.email,
@@ -113,6 +116,7 @@ export function LeadsTab() {
       l.industry || '',
       l.source || '',
       l.lead_score?.toString() || '0',
+      l.qualification_status || '',
       format(new Date(l.created_at), 'yyyy-MM-dd'),
     ]);
 
@@ -121,7 +125,7 @@ export function LeadsTab() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `xyren-leads-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `leads-${format(new Date(), 'yyyy-MM-dd')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -159,93 +163,27 @@ export function LeadsTab() {
         className="stats-card overflow-hidden rounded-xl"
       >
         <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-          <Tabs value={sourceFilter} onValueChange={setSourceFilter}>
-            <TabsList className="h-9 bg-muted/50">
-              {sourceFilters.map((filter) => (
-                <TabsTrigger
-                  key={filter.value}
-                  value={filter.value}
-                  className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
-                >
-                  {filter.label}
-                </TabsTrigger>
-              ))}
-            </TabsList>
-          </Tabs>
+          <LeadFilters
+            sourceFilter={sourceFilter}
+            onSourceFilterChange={setSourceFilter}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
+          />
           <Button
             variant="outline"
             size="sm"
             onClick={handleExportCSV}
-            className="gap-2"
+            className="gap-2 shrink-0"
           >
             <Download className="h-4 w-4" />
             Export CSV
           </Button>
         </div>
 
-        <div className="overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead className="w-[100px]">Score</TableHead>
-                <TableHead>Name</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Phone</TableHead>
-                <TableHead>Website</TableHead>
-                <TableHead>Industry</TableHead>
-                <TableHead>Source</TableHead>
-                <TableHead className="text-right">Date</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filteredLeads.length === 0 ? (
-                <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                    No leads found
-                  </TableCell>
-                </TableRow>
-              ) : (
-                filteredLeads.map((lead) => (
-                  <TableRow key={lead.id} className="table-row-hover">
-                    <TableCell>
-                      <LeadScoreBadge score={lead.lead_score || 0} />
-                    </TableCell>
-                    <TableCell className="font-medium">{lead.full_name}</TableCell>
-                    <TableCell className="text-muted-foreground">{lead.email}</TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {lead.phone || '—'}
-                    </TableCell>
-                    <TableCell>
-                      {lead.website ? (
-                        <a
-                          href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="text-primary hover:underline"
-                        >
-                          {lead.website.replace(/^https?:\/\//, '').slice(0, 25)}
-                        </a>
-                      ) : (
-                        '—'
-                      )}
-                    </TableCell>
-                    <TableCell className="text-muted-foreground">
-                      {lead.industry || '—'}
-                    </TableCell>
-                    <TableCell>
-                      <span className="rounded-full bg-muted px-2 py-1 text-xs">
-                        {formatSource(lead.source || '')}
-                      </span>
-                    </TableCell>
-                    <TableCell className="text-right text-muted-foreground">
-                      {format(new Date(lead.created_at), 'MMM d, yyyy')}
-                    </TableCell>
-                  </TableRow>
-                ))
-              )}
-            </TableBody>
-          </Table>
-        </div>
+        <LeadsTable leads={filteredAndSortedLeads} isLoading={isLoading} />
       </motion.div>
     </div>
   );
