@@ -1,7 +1,6 @@
-import { useState } from 'react';
+import { useState, Fragment } from 'react';
 import { format } from 'date-fns';
 import { ChevronDown, ChevronRight } from 'lucide-react';
-import { motion, AnimatePresence } from 'framer-motion';
 import {
   Table,
   TableBody,
@@ -70,12 +69,9 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
             leads.map((lead) => {
               const isExpanded = expandedRows.has(lead.id);
               return (
-                <motion.tbody
-                  key={lead.id}
-                  initial={false}
-                  animate={{ backgroundColor: isExpanded ? 'hsl(var(--muted) / 0.3)' : 'transparent' }}
-                >
+                <Fragment key={lead.id}>
                   <TableRow 
+                    key={lead.id}
                     className="cursor-pointer transition-colors hover:bg-muted/50"
                     onClick={() => toggleRow(lead.id)}
                   >
@@ -108,21 +104,14 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
                       {format(new Date(lead.created_at), 'MMM d')}
                     </TableCell>
                   </TableRow>
-                  <AnimatePresence>
-                    {isExpanded && (
-                      <motion.tr
-                        initial={{ opacity: 0, height: 0 }}
-                        animate={{ opacity: 1, height: 'auto' }}
-                        exit={{ opacity: 0, height: 0 }}
-                        transition={{ duration: 0.2 }}
-                      >
-                        <td colSpan={8} className="p-0">
-                          <LeadExpandedRow lead={lead} />
-                        </td>
-                      </motion.tr>
-                    )}
-                  </AnimatePresence>
-                </motion.tbody>
+                  {isExpanded && (
+                    <TableRow key={`${lead.id}-expanded`}>
+                      <TableCell colSpan={8} className="p-0 bg-muted/30">
+                        <LeadExpandedRow lead={lead} />
+                      </TableCell>
+                    </TableRow>
+                  )}
+                </Fragment>
               );
             })
           )}
