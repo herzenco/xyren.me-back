@@ -53,6 +53,7 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
             <TableHead className="min-w-[200px]">Email</TableHead>
             <TableHead className="min-w-[130px]">Phone</TableHead>
             <TableHead className="min-w-[150px]">Website</TableHead>
+            <TableHead className="min-w-[100px]">Industry</TableHead>
             <TableHead className="min-w-[100px]">Source</TableHead>
             <TableHead className="w-20 text-center">Score</TableHead>
             <TableHead className="w-20 text-center">Status</TableHead>
@@ -62,7 +63,7 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
         <TableBody>
           {leads.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+              <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
                 No leads found
               </TableCell>
             </TableRow>
@@ -106,6 +107,9 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
                         '—'
                       )}
                     </TableCell>
+                    <TableCell className="text-muted-foreground whitespace-nowrap">
+                      {lead.industry || '—'}
+                    </TableCell>
                     <TableCell>
                       <span className="rounded-full bg-muted px-2 py-1 text-xs whitespace-nowrap">
                         {formatSource(lead.source || '')}
@@ -123,7 +127,7 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
                   </TableRow>
                   {isExpanded && (
                     <TableRow key={`${lead.id}-expanded`}>
-                      <TableCell colSpan={9} className="p-0 bg-muted/30">
+                      <TableCell colSpan={10} className="p-0 bg-muted/30">
                         <LeadExpandedRow lead={lead} />
                       </TableCell>
                     </TableRow>
