@@ -52,6 +52,7 @@ Deno.serve(async (req) => {
           content: `Analyze this business website content and extract:
 1. The primary industry (single word like "Technology", "Healthcare", "Retail", "Marketing", "Finance", etc.)
 2. Any phone number found on the page
+3. A brief 1-2 sentence summary of what this company does and what products/services they offer
 
 Website content:
 ${scrapedContent.slice(0, 4000)}
@@ -67,6 +68,7 @@ Respond using the extract_business_data function.`
               properties: {
                 industry: { type: 'string', description: 'Primary industry of the business' },
                 phone: { type: 'string', description: 'Phone number if found' },
+                summary: { type: 'string', description: 'Brief 1-2 sentence summary of what the company does' },
               },
             },
           },
@@ -80,7 +82,7 @@ Respond using the extract_business_data function.`
     console.log('AI response:', JSON.stringify(aiData));
 
     // Try tool call first, then fallback to content parsing
-    let extracted: { industry?: string; phone?: string } = {};
+    let extracted: { industry?: string; phone?: string; summary?: string } = {};
     const toolCall = aiData.choices?.[0]?.message?.tool_calls?.[0];
     if (toolCall?.function?.arguments) {
       try {
@@ -111,6 +113,7 @@ Respond using the extract_business_data function.`
     const updates: Record<string, string> = {};
     if (extracted.industry) updates.industry = extracted.industry;
     if (extracted.phone) updates.phone = extracted.phone;
+    if (extracted.summary) updates.notes = extracted.summary;
 
     if (Object.keys(updates).length > 0) {
       const { error } = await supabase.from('leads').update(updates).eq('id', leadId);
