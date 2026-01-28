@@ -1,6 +1,6 @@
 import { useState, Fragment } from 'react';
 import { format } from 'date-fns';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { ChevronDown, ChevronRight, ExternalLink } from 'lucide-react';
 import {
   Table,
   TableBody,
@@ -52,6 +52,7 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
             <TableHead className="min-w-[140px]">Name</TableHead>
             <TableHead className="min-w-[200px]">Email</TableHead>
             <TableHead className="min-w-[130px]">Phone</TableHead>
+            <TableHead className="min-w-[150px]">Website</TableHead>
             <TableHead className="min-w-[100px]">Source</TableHead>
             <TableHead className="w-20 text-center">Score</TableHead>
             <TableHead className="w-20 text-center">Status</TableHead>
@@ -61,7 +62,7 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
         <TableBody>
           {leads.length === 0 ? (
             <TableRow>
-              <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
+              <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
                 No leads found
               </TableCell>
             </TableRow>
@@ -89,6 +90,22 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
                     <TableCell className="text-muted-foreground whitespace-nowrap">
                       {lead.phone || '—'}
                     </TableCell>
+                    <TableCell className="whitespace-nowrap">
+                      {lead.website ? (
+                        <a
+                          href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          onClick={(e) => e.stopPropagation()}
+                          className="text-primary hover:underline flex items-center gap-1 text-sm"
+                        >
+                          {lead.website.replace(/^https?:\/\//, '').slice(0, 25)}
+                          <ExternalLink className="h-3 w-3" />
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
                     <TableCell>
                       <span className="rounded-full bg-muted px-2 py-1 text-xs whitespace-nowrap">
                         {formatSource(lead.source || '')}
@@ -106,7 +123,7 @@ export function LeadsTable({ leads, isLoading }: LeadsTableProps) {
                   </TableRow>
                   {isExpanded && (
                     <TableRow key={`${lead.id}-expanded`}>
-                      <TableCell colSpan={8} className="p-0 bg-muted/30">
+                      <TableCell colSpan={9} className="p-0 bg-muted/30">
                         <LeadExpandedRow lead={lead} />
                       </TableCell>
                     </TableRow>
