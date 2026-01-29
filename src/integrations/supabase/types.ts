@@ -14,6 +14,42 @@ export type Database = {
   }
   public: {
     Tables: {
+      analytics_events: {
+        Row: {
+          created_at: string
+          element_id: string | null
+          element_text: string | null
+          event_name: string
+          event_type: string
+          id: string
+          metadata: Json | null
+          page_path: string | null
+          session_id: string
+        }
+        Insert: {
+          created_at?: string
+          element_id?: string | null
+          element_text?: string | null
+          event_name: string
+          event_type: string
+          id?: string
+          metadata?: Json | null
+          page_path?: string | null
+          session_id: string
+        }
+        Update: {
+          created_at?: string
+          element_id?: string | null
+          element_text?: string | null
+          event_name?: string
+          event_type?: string
+          id?: string
+          metadata?: Json | null
+          page_path?: string | null
+          session_id?: string
+        }
+        Relationships: []
+      }
       chat_interactions: {
         Row: {
           assistant_message: string | null
@@ -71,6 +107,7 @@ export type Database = {
           notes: string | null
           phone: string | null
           qualification_status: string | null
+          questionnaire_answers: Json | null
           source: string | null
           website: string | null
         }
@@ -86,6 +123,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           qualification_status?: string | null
+          questionnaire_answers?: Json | null
           source?: string | null
           website?: string | null
         }
@@ -101,6 +139,7 @@ export type Database = {
           notes?: string | null
           phone?: string | null
           qualification_status?: string | null
+          questionnaire_answers?: Json | null
           source?: string | null
           website?: string | null
         }
@@ -108,37 +147,73 @@ export type Database = {
       }
       page_sessions: {
         Row: {
+          browser: string | null
           created_at: string
           device_type: string | null
           duration_seconds: number | null
           ended_at: string | null
           id: string
+          max_scroll_depth: number | null
+          os: string | null
           page_path: string
           referrer: string | null
+          screen_height: number | null
+          screen_width: number | null
           session_id: string
           started_at: string | null
+          utm_campaign: string | null
+          utm_content: string | null
+          utm_medium: string | null
+          utm_source: string | null
+          utm_term: string | null
+          viewport_height: number | null
+          viewport_width: number | null
         }
         Insert: {
+          browser?: string | null
           created_at?: string
           device_type?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
           id?: string
+          max_scroll_depth?: number | null
+          os?: string | null
           page_path: string
           referrer?: string | null
+          screen_height?: number | null
+          screen_width?: number | null
           session_id: string
           started_at?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          viewport_height?: number | null
+          viewport_width?: number | null
         }
         Update: {
+          browser?: string | null
           created_at?: string
           device_type?: string | null
           duration_seconds?: number | null
           ended_at?: string | null
           id?: string
+          max_scroll_depth?: number | null
+          os?: string | null
           page_path?: string
           referrer?: string | null
+          screen_height?: number | null
+          screen_width?: number | null
           session_id?: string
           started_at?: string | null
+          utm_campaign?: string | null
+          utm_content?: string | null
+          utm_medium?: string | null
+          utm_source?: string | null
+          utm_term?: string | null
+          viewport_height?: number | null
+          viewport_width?: number | null
         }
         Relationships: []
       }
