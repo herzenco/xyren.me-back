@@ -1,8 +1,8 @@
 import { useMemo, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, subDays, isAfter } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Users, TrendingUp, Zap, FileText, Download } from 'lucide-react';
+import { Users, TrendingUp, Zap, FileText, Download, Archive, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { StatsCard } from './StatsCard';
 import { AreaChartCard } from './AreaChartCard';
@@ -10,6 +10,7 @@ import { LeadScoreBadge } from './LeadScoreBadge';
 import { formatSource } from '@/lib/leadScoring';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Table,
   TableBody,
@@ -19,6 +20,17 @@ import {
   TableRow,
 } from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
 
 type Lead = {
   id: string;
@@ -34,21 +46,24 @@ type Lead = {
   notes: string | null;
   intent_signals: Record<string, boolean> | null;
   engagement_depth: number | null;
+  archived: boolean;
 };
 
 const sourceFilters = [
   { value: 'all', label: 'All' },
+  { value: 'archived', label: 'Archived' },
   { value: 'hero_modal', label: 'Hero' },
   { value: 'project_plan_modal', label: 'Project Plan' },
   { value: 'chatbot', label: 'Chatbot' },
-  { value: 'real_estate', label: 'Real Estate' },
-  { value: 'professional_services', label: 'Professional' },
-  { value: 'home_services', label: 'Home Services' },
-  { value: 'education', label: 'Education' },
+  { value: 'home_services_page', label: 'Home Services' },
+  { value: 'professional_services_page', label: 'Professional Services' },
 ];
 
 export function LeadsTab() {
   const [sourceFilter, setSourceFilter] = useState('all');
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+  const queryClient = useQueryClient();
 
   const { data: leads, isLoading } = useQuery({
     queryKey: ['leads'],
@@ -63,28 +78,122 @@ export function LeadsTab() {
     },
   });
 
+  const archiveMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const { error } = await supabase
+        .from('leads')
+        .update({ archived: true })
+        .in('id', leadIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setSelectedLeads(new Set());
+      toast.success('Leads archived successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to archive leads: ' + error.message);
+    },
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const { error } = await supabase
+        .from('leads')
+        .update({ archived: false })
+        .in('id', leadIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setSelectedLeads(new Set());
+      toast.success('Leads restored successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to restore leads: ' + error.message);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .in('id', leadIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setSelectedLeads(new Set());
+      setDeleteDialogOpen(false);
+      toast.success('Leads deleted permanently');
+    },
+    onError: (error) => {
+      toast.error('Failed to delete leads: ' + error.message);
+    },
+  });
+
   const stats = useMemo(() => {
     if (!leads) return { total: 0, thisWeek: 0, heroModal: 0, projectPlan: 0 };
 
+    const activeLeads = leads.filter((l) => !l.archived);
     const weekAgo = subDays(new Date(), 7);
     return {
-      total: leads.length,
-      thisWeek: leads.filter((l) => isAfter(new Date(l.created_at), weekAgo)).length,
-      heroModal: leads.filter((l) => l.source === 'hero_modal').length,
-      projectPlan: leads.filter((l) => l.source === 'project_plan_modal').length,
+      total: activeLeads.length,
+      thisWeek: activeLeads.filter((l) => isAfter(new Date(l.created_at), weekAgo)).length,
+      heroModal: activeLeads.filter((l) => l.source === 'hero_modal').length,
+      projectPlan: activeLeads.filter((l) => l.source === 'project_plan_modal').length,
     };
   }, [leads]);
 
   const filteredLeads = useMemo(() => {
     if (!leads) return [];
-    if (sourceFilter === 'all') return leads;
-    return leads.filter((l) => l.source === sourceFilter);
+    
+    if (sourceFilter === 'archived') {
+      return leads.filter((l) => l.archived);
+    }
+    
+    // For non-archived filters, exclude archived leads
+    const activeLeads = leads.filter((l) => !l.archived);
+    
+    if (sourceFilter === 'all') return activeLeads;
+    return activeLeads.filter((l) => l.source === sourceFilter);
   }, [leads, sourceFilter]);
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedLeads(new Set(filteredLeads.map((l) => l.id)));
+    } else {
+      setSelectedLeads(new Set());
+    }
+  };
+
+  const handleSelectLead = (leadId: string, checked: boolean) => {
+    const newSelected = new Set(selectedLeads);
+    if (checked) {
+      newSelected.add(leadId);
+    } else {
+      newSelected.delete(leadId);
+    }
+    setSelectedLeads(newSelected);
+  };
+
+  const handleArchive = () => {
+    archiveMutation.mutate(Array.from(selectedLeads));
+  };
+
+  const handleUnarchive = () => {
+    unarchiveMutation.mutate(Array.from(selectedLeads));
+  };
+
+  const handleDelete = () => {
+    deleteMutation.mutate(Array.from(selectedLeads));
+  };
 
   const handleExportCSV = () => {
     if (!leads || leads.length === 0) return;
 
-    const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Date'];
+    const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Date', 'Archived'];
     const rows = leads.map((l) => [
       l.full_name,
       l.email,
@@ -94,6 +203,7 @@ export function LeadsTab() {
       l.source || '',
       l.lead_score?.toString() || '0',
       format(new Date(l.created_at), 'yyyy-MM-dd'),
+      l.archived ? 'Yes' : 'No',
     ]);
 
     const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
@@ -105,6 +215,10 @@ export function LeadsTab() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const isViewingArchived = sourceFilter === 'archived';
+  const allSelected = filteredLeads.length > 0 && selectedLeads.size === filteredLeads.length;
+  const someSelected = selectedLeads.size > 0;
 
   if (isLoading) {
     return <LoadingSkeleton />;
@@ -128,7 +242,7 @@ export function LeadsTab() {
         className="stats-card rounded-xl p-5"
       >
         <h3 className="mb-4 text-sm font-medium text-muted-foreground">Leads Over Time</h3>
-        <AreaChartCard data={leads || []} title="leads" />
+        <AreaChartCard data={leads?.filter((l) => !l.archived) || []} title="leads" />
       </motion.div>
 
       {/* Filters and Table */}
@@ -139,7 +253,7 @@ export function LeadsTab() {
         className="stats-card overflow-hidden rounded-xl"
       >
         <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-          <Tabs value={sourceFilter} onValueChange={setSourceFilter}>
+          <Tabs value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setSelectedLeads(new Set()); }}>
             <TabsList className="h-9 bg-muted/50">
               {sourceFilters.map((filter) => (
                 <TabsTrigger
@@ -152,21 +266,66 @@ export function LeadsTab() {
               ))}
             </TabsList>
           </Tabs>
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCSV}
-            className="gap-2"
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
+          <div className="flex items-center gap-2">
+            {someSelected && (
+              <>
+                {isViewingArchived ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUnarchive}
+                    disabled={unarchiveMutation.isPending}
+                    className="gap-2"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Restore ({selectedLeads.size})
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleArchive}
+                    disabled={archiveMutation.isPending}
+                    className="gap-2"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive ({selectedLeads.size})
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  className="gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete ({selectedLeads.size})
+                </Button>
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCSV}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
         </div>
 
         <div className="overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[50px]">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={handleSelectAll}
+                    aria-label="Select all"
+                  />
+                </TableHead>
                 <TableHead className="w-[100px]">Score</TableHead>
                 <TableHead>Name</TableHead>
                 <TableHead>Email</TableHead>
@@ -180,13 +339,20 @@ export function LeadsTab() {
             <TableBody>
               {filteredLeads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={8} className="h-32 text-center text-muted-foreground">
-                    No leads found
+                  <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                    {isViewingArchived ? 'No archived leads' : 'No leads found'}
                   </TableCell>
                 </TableRow>
               ) : (
                 filteredLeads.map((lead) => (
                   <TableRow key={lead.id} className="table-row-hover">
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedLeads.has(lead.id)}
+                        onCheckedChange={(checked) => handleSelectLead(lead.id, checked as boolean)}
+                        aria-label={`Select ${lead.full_name}`}
+                      />
+                    </TableCell>
                     <TableCell>
                       <LeadScoreBadge score={lead.lead_score || 0} />
                     </TableCell>
@@ -227,6 +393,27 @@ export function LeadsTab() {
           </Table>
         </div>
       </motion.div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedLeads.size} lead{selectedLeads.size > 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. These leads will be permanently deleted from the database.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
