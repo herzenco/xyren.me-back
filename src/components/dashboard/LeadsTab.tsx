@@ -51,12 +51,12 @@ type Lead = {
 
 const sourceFilters = [
   { value: 'all', label: 'All' },
-  { value: 'archived', label: 'Archived' },
   { value: 'hero_modal', label: 'Hero' },
   { value: 'project_plan_modal', label: 'Project Plan' },
   { value: 'chatbot', label: 'Chatbot' },
   { value: 'home_services_page', label: 'Home Services' },
   { value: 'professional_services_page', label: 'Professional Services' },
+  { value: 'archived', label: 'Archived' },
 ];
 
 export function LeadsTab() {
