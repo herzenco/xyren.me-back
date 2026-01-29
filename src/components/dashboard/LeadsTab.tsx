@@ -1,22 +1,73 @@
 import { useMemo, useState, useEffect } from 'react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, subDays, isAfter } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Users, TrendingUp, Zap, FileText, Download } from 'lucide-react';
+import { Users, TrendingUp, Zap, FileText, Download, Archive, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { StatsCard } from './StatsCard';
 import { AreaChartCard } from './AreaChartCard';
-import { LeadFilters } from './leads/LeadFilters';
-import { LeadsTable } from './leads/LeadsTable';
+import { LeadScoreBadge } from './LeadScoreBadge';
 import { Button } from '@/components/ui/button';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Checkbox } from '@/components/ui/checkbox';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
 import { Skeleton } from '@/components/ui/skeleton';
-import type { Lead, SortField, SortDirection } from './leads/types';
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import { toast } from 'sonner';
+
+type Lead = {
+  id: string;
+  created_at: string;
+  full_name: string;
+  email: string;
+  phone: string | null;
+  website: string | null;
+  industry: string | null;
+  source: string | null;
+  lead_score: number | null;
+  qualification_status: string | null;
+  notes: string | null;
+  intent_signals: Record<string, boolean> | null;
+  engagement_depth: number | null;
+  archived: boolean;
+};
+
+const sourceFilters = [
+  { value: 'all', label: 'All' },
+  { value: 'hero_modal', label: 'Hero' },
+  { value: 'project_plan_modal', label: 'Project Plan' },
+  { value: 'chatbot', label: 'Chatbot' },
+  { value: 'home_services_page', label: 'Home Services' },
+  { value: 'professional_services_page', label: 'Professional Services' },
+  { value: 'archived', label: 'Archived' },
+];
+
+function formatSource(source: string): string {
+  return source
+    .replace(/_/g, ' ')
+    .replace(/\b\w/g, (l) => l.toUpperCase());
+}
 
 export function LeadsTab() {
   const [sourceFilter, setSourceFilter] = useState('all');
-  const [searchQuery, setSearchQuery] = useState('');
-  const [sortField, setSortField] = useState<SortField>('created_at');
-  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
+  const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
+  const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const queryClient = useQueryClient();
 
   const { data: leads, isLoading } = useQuery({
@@ -48,66 +99,122 @@ export function LeadsTab() {
     };
   }, [queryClient]);
 
+  const archiveMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const { error } = await supabase
+        .from('leads')
+        .update({ archived: true })
+        .in('id', leadIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setSelectedLeads(new Set());
+      toast.success('Leads archived successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to archive leads: ' + error.message);
+    },
+  });
+
+  const unarchiveMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const { error } = await supabase
+        .from('leads')
+        .update({ archived: false })
+        .in('id', leadIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setSelectedLeads(new Set());
+      toast.success('Leads restored successfully');
+    },
+    onError: (error) => {
+      toast.error('Failed to restore leads: ' + error.message);
+    },
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const { error } = await supabase
+        .from('leads')
+        .delete()
+        .in('id', leadIds);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setSelectedLeads(new Set());
+      setDeleteDialogOpen(false);
+      toast.success('Leads deleted permanently');
+    },
+    onError: (error) => {
+      toast.error('Failed to delete leads: ' + error.message);
+    },
+  });
+
   const stats = useMemo(() => {
     if (!leads) return { total: 0, thisWeek: 0, heroModal: 0, projectPlan: 0 };
 
+    const activeLeads = leads.filter((l) => !l.archived);
     const weekAgo = subDays(new Date(), 7);
     return {
-      total: leads.length,
-      thisWeek: leads.filter((l) => isAfter(new Date(l.created_at), weekAgo)).length,
-      heroModal: leads.filter((l) => l.source === 'hero_modal').length,
-      projectPlan: leads.filter((l) => l.source === 'project_plan_modal').length,
+      total: activeLeads.length,
+      thisWeek: activeLeads.filter((l) => isAfter(new Date(l.created_at), weekAgo)).length,
+      heroModal: activeLeads.filter((l) => l.source === 'hero_modal').length,
+      projectPlan: activeLeads.filter((l) => l.source === 'project_plan_modal').length,
     };
   }, [leads]);
 
-  const filteredAndSortedLeads = useMemo(() => {
+  const filteredLeads = useMemo(() => {
     if (!leads) return [];
 
-    let result = leads;
-
-    // Filter by source
-    if (sourceFilter !== 'all') {
-      result = result.filter((l) => l.source === sourceFilter);
+    if (sourceFilter === 'archived') {
+      return leads.filter((l) => l.archived);
     }
 
-    // Filter by search query
-    if (searchQuery.trim()) {
-      const query = searchQuery.toLowerCase();
-      result = result.filter(
-        (l) =>
-          l.full_name.toLowerCase().includes(query) ||
-          l.email.toLowerCase().includes(query)
-      );
+    // For non-archived filters, exclude archived leads
+    const activeLeads = leads.filter((l) => !l.archived);
+
+    if (sourceFilter === 'all') return activeLeads;
+    return activeLeads.filter((l) => l.source === sourceFilter);
+  }, [leads, sourceFilter]);
+
+  const handleSelectAll = (checked: boolean) => {
+    if (checked) {
+      setSelectedLeads(new Set(filteredLeads.map((l) => l.id)));
+    } else {
+      setSelectedLeads(new Set());
     }
+  };
 
-    // Sort
-    result = [...result].sort((a, b) => {
-      let aVal: number;
-      let bVal: number;
+  const handleSelectLead = (leadId: string, checked: boolean) => {
+    const newSelected = new Set(selectedLeads);
+    if (checked) {
+      newSelected.add(leadId);
+    } else {
+      newSelected.delete(leadId);
+    }
+    setSelectedLeads(newSelected);
+  };
 
-      if (sortField === 'lead_score') {
-        aVal = a.lead_score ?? 0;
-        bVal = b.lead_score ?? 0;
-      } else {
-        aVal = new Date(a.created_at).getTime();
-        bVal = new Date(b.created_at).getTime();
-      }
+  const handleArchive = () => {
+    archiveMutation.mutate(Array.from(selectedLeads));
+  };
 
-      return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
-    });
+  const handleUnarchive = () => {
+    unarchiveMutation.mutate(Array.from(selectedLeads));
+  };
 
-    return result;
-  }, [leads, sourceFilter, searchQuery, sortField, sortDirection]);
-
-  const handleSortChange = (field: SortField, direction: SortDirection) => {
-    setSortField(field);
-    setSortDirection(direction);
+  const handleDelete = () => {
+    deleteMutation.mutate(Array.from(selectedLeads));
   };
 
   const handleExportCSV = () => {
     if (!leads || leads.length === 0) return;
 
-    const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Status', 'Date'];
+    const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Status', 'Date', 'Archived'];
     const rows = leads.map((l) => [
       l.full_name,
       l.email,
@@ -118,6 +225,7 @@ export function LeadsTab() {
       l.lead_score?.toString() || '0',
       l.qualification_status || '',
       format(new Date(l.created_at), 'yyyy-MM-dd'),
+      l.archived ? 'Yes' : 'No',
     ]);
 
     const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
@@ -129,6 +237,10 @@ export function LeadsTab() {
     a.click();
     URL.revokeObjectURL(url);
   };
+
+  const isViewingArchived = sourceFilter === 'archived';
+  const allSelected = filteredLeads.length > 0 && selectedLeads.size === filteredLeads.length;
+  const someSelected = selectedLeads.size > 0;
 
   if (isLoading) {
     return <LoadingSkeleton />;
@@ -152,7 +264,7 @@ export function LeadsTab() {
         className="stats-card rounded-xl p-5"
       >
         <h3 className="mb-4 text-sm font-medium text-muted-foreground">Leads Over Time</h3>
-        <AreaChartCard data={leads || []} title="leads" />
+        <AreaChartCard data={leads?.filter((l) => !l.archived) || []} title="leads" />
       </motion.div>
 
       {/* Filters and Table */}
@@ -163,28 +275,167 @@ export function LeadsTab() {
         className="stats-card overflow-hidden rounded-xl"
       >
         <div className="flex flex-col gap-4 border-b border-border p-4 sm:flex-row sm:items-center sm:justify-between">
-          <LeadFilters
-            sourceFilter={sourceFilter}
-            onSourceFilterChange={setSourceFilter}
-            searchQuery={searchQuery}
-            onSearchChange={setSearchQuery}
-            sortField={sortField}
-            sortDirection={sortDirection}
-            onSortChange={handleSortChange}
-          />
-          <Button
-            variant="outline"
-            size="sm"
-            onClick={handleExportCSV}
-            className="gap-2 shrink-0"
-          >
-            <Download className="h-4 w-4" />
-            Export CSV
-          </Button>
+          <Tabs value={sourceFilter} onValueChange={(v) => { setSourceFilter(v); setSelectedLeads(new Set()); }}>
+            <TabsList className="h-9 bg-muted/50">
+              {sourceFilters.map((filter) => (
+                <TabsTrigger
+                  key={filter.value}
+                  value={filter.value}
+                  className="text-xs data-[state=active]:bg-primary data-[state=active]:text-primary-foreground"
+                >
+                  {filter.label}
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </Tabs>
+          <div className="flex items-center gap-2">
+            {someSelected && (
+              <>
+                {isViewingArchived ? (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleUnarchive}
+                    disabled={unarchiveMutation.isPending}
+                    className="gap-2"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Restore ({selectedLeads.size})
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleArchive}
+                    disabled={archiveMutation.isPending}
+                    className="gap-2"
+                  >
+                    <Archive className="h-4 w-4" />
+                    Archive ({selectedLeads.size})
+                  </Button>
+                )}
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => setDeleteDialogOpen(true)}
+                  className="gap-2"
+                >
+                  <Trash2 className="h-4 w-4" />
+                  Delete ({selectedLeads.size})
+                </Button>
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={handleExportCSV}
+              className="gap-2"
+            >
+              <Download className="h-4 w-4" />
+              Export CSV
+            </Button>
+          </div>
         </div>
 
-        <LeadsTable leads={filteredAndSortedLeads} isLoading={isLoading} />
+        <div className="overflow-x-auto">
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[50px]">
+                  <Checkbox
+                    checked={allSelected}
+                    onCheckedChange={handleSelectAll}
+                    aria-label="Select all"
+                  />
+                </TableHead>
+                <TableHead className="w-[100px]">Score</TableHead>
+                <TableHead>Name</TableHead>
+                <TableHead>Email</TableHead>
+                <TableHead>Phone</TableHead>
+                <TableHead>Website</TableHead>
+                <TableHead>Industry</TableHead>
+                <TableHead>Source</TableHead>
+                <TableHead className="text-right">Date</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {filteredLeads.length === 0 ? (
+                <TableRow>
+                  <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+                    {isViewingArchived ? 'No archived leads' : 'No leads found'}
+                  </TableCell>
+                </TableRow>
+              ) : (
+                filteredLeads.map((lead) => (
+                  <TableRow key={lead.id} className="table-row-hover">
+                    <TableCell>
+                      <Checkbox
+                        checked={selectedLeads.has(lead.id)}
+                        onCheckedChange={(checked) => handleSelectLead(lead.id, checked as boolean)}
+                        aria-label={`Select ${lead.full_name}`}
+                      />
+                    </TableCell>
+                    <TableCell>
+                      <LeadScoreBadge score={lead.lead_score || 0} />
+                    </TableCell>
+                    <TableCell className="font-medium">{lead.full_name}</TableCell>
+                    <TableCell className="text-muted-foreground">{lead.email}</TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {lead.phone || '—'}
+                    </TableCell>
+                    <TableCell>
+                      {lead.website ? (
+                        <a
+                          href={lead.website.startsWith('http') ? lead.website : `https://${lead.website}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-primary hover:underline"
+                        >
+                          {lead.website.replace(/^https?:\/\//, '').slice(0, 25)}
+                        </a>
+                      ) : (
+                        '—'
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground">
+                      {lead.industry || '—'}
+                    </TableCell>
+                    <TableCell>
+                      <span className="rounded-full bg-muted px-2 py-1 text-xs">
+                        {formatSource(lead.source || '')}
+                      </span>
+                    </TableCell>
+                    <TableCell className="text-right text-muted-foreground">
+                      {format(new Date(lead.created_at), 'MMM d, yyyy')}
+                    </TableCell>
+                  </TableRow>
+                ))
+              )}
+            </TableBody>
+          </Table>
+        </div>
       </motion.div>
+
+      {/* Delete Confirmation Dialog */}
+      <AlertDialog open={deleteDialogOpen} onOpenChange={setDeleteDialogOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selectedLeads.size} lead{selectedLeads.size > 1 ? 's' : ''}?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. These leads will be permanently deleted from the database.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={handleDelete}
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+            >
+              {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

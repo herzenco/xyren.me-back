@@ -1,73 +1,88 @@
-# Welcome to your Lovable project
+# xyren.me Web Application
 
-## Project info
+> **Note:** This repository is named `xyren.me-back` but it's actually a **frontend web application**, not a backend service. Consider renaming to `xyren.me-web` or `xyren.me-frontend` to avoid confusion.
 
-**URL**: https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID
+A modern lead management dashboard built with React, TypeScript, and Tailwind CSS.
 
-## How can I edit this code?
+## Tech Stack
 
-There are several ways of editing your application.
+- **Framework:** React 18 with TypeScript
+- **Build Tool:** Vite
+- **Styling:** Tailwind CSS + shadcn/ui components
+- **Backend:** Lovable Cloud (Supabase)
+- **State Management:** TanStack Query
+- **Routing:** React Router v6
 
-**Use Lovable**
+## Project Structure
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and start prompting.
+```
+src/
+├── components/       # Reusable UI components
+│   ├── dashboard/    # Dashboard-specific components
+│   └── ui/           # shadcn/ui components
+├── hooks/            # Custom React hooks
+├── integrations/     # External service integrations
+├── lib/              # Utility functions
+├── pages/            # Route page components
+└── test/             # Test configuration and utilities
+```
 
-Changes made via Lovable will be committed automatically to this repo.
+## Getting Started
 
-**Use your preferred IDE**
+### Prerequisites
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+- Node.js 18+
+- npm (recommended) or bun
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Environment Setup
 
-Follow these steps:
+1. Copy the example environment file:
+   ```sh
+   cp .env.example .env
+   ```
+
+2. Fill in your environment variables (Lovable Cloud provides these automatically).
+
+### Installation
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
-git clone <YOUR_GIT_URL>
+npm install
+```
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+### Development
 
-# Step 3: Install the necessary dependencies.
-npm i
-
-# Step 4: Start the development server with auto-reloading and an instant preview.
+```sh
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The app will be available at `http://localhost:8080`.
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+### Scripts
 
-**Use GitHub Codespaces**
+| Command | Description |
+|---------|-------------|
+| `npm run dev` | Start development server |
+| `npm run build` | Build for production |
+| `npm run preview` | Preview production build |
+| `npm run lint` | Run ESLint |
+| `npm run typecheck` | Run TypeScript type checking |
+| `npm run test` | Run tests |
+| `npm run test:watch` | Run tests in watch mode |
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## Deployment
 
-## What technologies are used for this project?
+This project is configured for deployment on Lovable. Simply open [Lovable](https://lovable.dev) and click **Share → Publish**.
 
-This project is built with:
+### Custom Domain
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+To connect a custom domain, navigate to **Project → Settings → Domains** and click **Connect Domain**.
 
-## How can I deploy this project?
+## Security
 
-Simply open [Lovable](https://lovable.dev/projects/REPLACE_WITH_PROJECT_ID) and click on Share -> Publish.
+- Never commit `.env` files with real credentials
+- Use `.env.example` as a template for required environment variables
+- All secrets are managed through Lovable Cloud
 
-## Can I connect a custom domain to my Lovable project?
+## License
 
-Yes, you can!
-
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
-
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+Private - All rights reserved.

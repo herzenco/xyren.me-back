@@ -96,6 +96,7 @@ export type Database = {
       }
       leads: {
         Row: {
+          archived: boolean
           created_at: string
           email: string
           engagement_depth: number | null
@@ -112,6 +113,7 @@ export type Database = {
           website: string | null
         }
         Insert: {
+          archived?: boolean
           created_at?: string
           email: string
           engagement_depth?: number | null
@@ -128,6 +130,7 @@ export type Database = {
           website?: string | null
         }
         Update: {
+          archived?: boolean
           created_at?: string
           email?: string
           engagement_depth?: number | null
