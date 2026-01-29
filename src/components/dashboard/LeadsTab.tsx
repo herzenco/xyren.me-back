@@ -1,13 +1,15 @@
 import { useMemo, useState } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useMemo, useState, useEffect } from 'react';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, subDays, isAfter } from 'date-fns';
 import { motion } from 'framer-motion';
 import { Users, TrendingUp, Zap, FileText, Download, Archive, Trash2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { StatsCard } from './StatsCard';
 import { AreaChartCard } from './AreaChartCard';
-import { LeadScoreBadge } from './LeadScoreBadge';
-import { formatSource } from '@/lib/leadScoring';
+import { LeadFilters } from './leads/LeadFilters';
+import { LeadsTable } from './leads/LeadsTable';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Checkbox } from '@/components/ui/checkbox';
@@ -63,6 +65,14 @@ export function LeadsTab() {
   const [sourceFilter, setSourceFilter] = useState('all');
   const [selectedLeads, setSelectedLeads] = useState<Set<string>>(new Set());
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
+import { Skeleton } from '@/components/ui/skeleton';
+import type { Lead, SortField, SortDirection } from './leads/types';
+
+export function LeadsTab() {
+  const [sourceFilter, setSourceFilter] = useState('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [sortField, setSortField] = useState<SortField>('created_at');
+  const [sortDirection, setSortDirection] = useState<SortDirection>('desc');
   const queryClient = useQueryClient();
 
   const { data: leads, isLoading } = useQuery({
@@ -132,6 +142,21 @@ export function LeadsTab() {
       toast.error('Failed to delete leads: ' + error.message);
     },
   });
+  // Subscribe to realtime changes
+  useEffect(() => {
+    const channel = supabase
+      .channel('leads-realtime')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'leads' },
+        () => queryClient.invalidateQueries({ queryKey: ['leads'] })
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [queryClient]);
 
   const stats = useMemo(() => {
     if (!leads) return { total: 0, thisWeek: 0, heroModal: 0, projectPlan: 0 };
@@ -146,7 +171,7 @@ export function LeadsTab() {
     };
   }, [leads]);
 
-  const filteredLeads = useMemo(() => {
+  const filteredAndSortedLeads = useMemo(() => {
     if (!leads) return [];
     
     if (sourceFilter === 'archived') {
@@ -159,6 +184,47 @@ export function LeadsTab() {
     if (sourceFilter === 'all') return activeLeads;
     return activeLeads.filter((l) => l.source === sourceFilter);
   }, [leads, sourceFilter]);
+
+    let result = leads;
+
+    // Filter by source
+    if (sourceFilter !== 'all') {
+      result = result.filter((l) => l.source === sourceFilter);
+    }
+
+    // Filter by search query
+    if (searchQuery.trim()) {
+      const query = searchQuery.toLowerCase();
+      result = result.filter(
+        (l) =>
+          l.full_name.toLowerCase().includes(query) ||
+          l.email.toLowerCase().includes(query)
+      );
+    }
+
+    // Sort
+    result = [...result].sort((a, b) => {
+      let aVal: number;
+      let bVal: number;
+
+      if (sortField === 'lead_score') {
+        aVal = a.lead_score ?? 0;
+        bVal = b.lead_score ?? 0;
+      } else {
+        aVal = new Date(a.created_at).getTime();
+        bVal = new Date(b.created_at).getTime();
+      }
+
+      return sortDirection === 'desc' ? bVal - aVal : aVal - bVal;
+    });
+
+    return result;
+  }, [leads, sourceFilter, searchQuery, sortField, sortDirection]);
+
+  const handleSortChange = (field: SortField, direction: SortDirection) => {
+    setSortField(field);
+    setSortDirection(direction);
+  };
 
   const handleSelectAll = (checked: boolean) => {
     if (checked) {
@@ -194,6 +260,7 @@ export function LeadsTab() {
     if (!leads || leads.length === 0) return;
 
     const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Date', 'Archived'];
+    const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Status', 'Date'];
     const rows = leads.map((l) => [
       l.full_name,
       l.email,
@@ -202,6 +269,7 @@ export function LeadsTab() {
       l.industry || '',
       l.source || '',
       l.lead_score?.toString() || '0',
+      l.qualification_status || '',
       format(new Date(l.created_at), 'yyyy-MM-dd'),
       l.archived ? 'Yes' : 'No',
     ]);
@@ -211,7 +279,7 @@ export function LeadsTab() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `xyren-leads-${format(new Date(), 'yyyy-MM-dd')}.csv`;
+    a.download = `leads-${format(new Date(), 'yyyy-MM-dd')}.csv`;
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -392,6 +460,27 @@ export function LeadsTab() {
             </TableBody>
           </Table>
         </div>
+          <LeadFilters
+            sourceFilter={sourceFilter}
+            onSourceFilterChange={setSourceFilter}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+            sortField={sortField}
+            sortDirection={sortDirection}
+            onSortChange={handleSortChange}
+          />
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleExportCSV}
+            className="gap-2 shrink-0"
+          >
+            <Download className="h-4 w-4" />
+            Export CSV
+          </Button>
+        </div>
+
+        <LeadsTable leads={filteredAndSortedLeads} isLoading={isLoading} />
       </motion.div>
 
       {/* Delete Confirmation Dialog */}

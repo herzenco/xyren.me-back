@@ -6,10 +6,10 @@ import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LeadsTab } from '@/components/dashboard/LeadsTab';
 import { ChatTab } from '@/components/dashboard/ChatTab';
+import { ConversationsTab } from '@/components/dashboard/ConversationsTab';
 import { AnalyticsTab } from '@/components/dashboard/AnalyticsTab';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-
 export default function Dashboard() {
   const { user, signOut } = useAuth();
   const { toast } = useToast();
@@ -18,9 +18,43 @@ export default function Dashboard() {
   const handleEnrichLeads = async () => {
     setIsEnriching(true);
     try {
-      const { error } = await supabase.functions.invoke('enrich-lead');
-      if (error) throw error;
-      toast({ title: 'Success', description: 'Lead enrichment started' });
+      // Fetch leads with websites that haven't been enriched (no industry yet)
+      const { data: leads, error: fetchError } = await supabase
+        .from('leads')
+        .select('id, website')
+        .not('website', 'is', null)
+        .is('industry', null);
+
+      if (fetchError) throw fetchError;
+
+      if (!leads || leads.length === 0) {
+        toast({ title: 'Info', description: 'No leads to enrich' });
+        setIsEnriching(false);
+        return;
+      }
+
+      let successCount = 0;
+      let errorCount = 0;
+
+      for (const lead of leads) {
+        try {
+          const { error } = await supabase.functions.invoke('enrich-lead', {
+            body: { leadId: lead.id, url: lead.website },
+          });
+          if (error) {
+            errorCount++;
+          } else {
+            successCount++;
+          }
+        } catch {
+          errorCount++;
+        }
+      }
+
+      toast({
+        title: 'Enrichment Complete',
+        description: `${successCount} leads enriched${errorCount > 0 ? `, ${errorCount} failed` : ''}`,
+      });
     } catch {
       toast({ title: 'Error', description: 'Failed to enrich leads', variant: 'destructive' });
     }
@@ -60,10 +94,12 @@ export default function Dashboard() {
         <Tabs defaultValue="leads" className="space-y-6">
           <TabsList className="bg-muted/50">
             <TabsTrigger value="leads">Leads</TabsTrigger>
-            <TabsTrigger value="chat">Chat</TabsTrigger>
+            <TabsTrigger value="conversations">Conversations</TabsTrigger>
+            <TabsTrigger value="chat">Chat Stats</TabsTrigger>
             <TabsTrigger value="analytics">Analytics</TabsTrigger>
           </TabsList>
           <TabsContent value="leads"><LeadsTab /></TabsContent>
+          <TabsContent value="conversations"><ConversationsTab /></TabsContent>
           <TabsContent value="chat"><ChatTab /></TabsContent>
           <TabsContent value="analytics"><AnalyticsTab /></TabsContent>
         </Tabs>
