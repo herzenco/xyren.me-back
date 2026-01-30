@@ -181,17 +181,21 @@ export function LeadsTab() {
     return activeLeads.filter((l) => l.source === sourceFilter);
   }, [leads, sourceFilter]);
 
-  const handleSelectAll = (checked: boolean) => {
-    if (checked) {
+  const handleSelectAll = (checked: boolean | "indeterminate") => {
+    // Handle "indeterminate" state - treat as false (deselect all)
+    const shouldSelect = checked === true;
+    if (shouldSelect) {
       setSelectedLeads(new Set(filteredLeads.map((l) => l.id)));
     } else {
       setSelectedLeads(new Set());
     }
   };
 
-  const handleSelectLead = (leadId: string, checked: boolean) => {
+  const handleSelectLead = (leadId: string, checked: boolean | "indeterminate") => {
+    // Handle "indeterminate" state - treat as false (deselect)
+    const shouldSelect = checked === true;
     const newSelected = new Set(selectedLeads);
-    if (checked) {
+    if (shouldSelect) {
       newSelected.add(leadId);
     } else {
       newSelected.delete(leadId);
@@ -211,25 +215,34 @@ export function LeadsTab() {
     deleteMutation.mutate(Array.from(selectedLeads));
   };
 
+  // Properly escape CSV fields: wrap in quotes if contains comma, quote, or newline
+  const escapeCSVField = (field: string): string => {
+    if (field.includes(',') || field.includes('"') || field.includes('\n') || field.includes('\r')) {
+      // Escape double quotes by doubling them
+      return `"${field.replace(/"/g, '""')}"`;
+    }
+    return field;
+  };
+
   const handleExportCSV = () => {
     if (!leads || leads.length === 0) return;
 
     const headers = ['Name', 'Email', 'Phone', 'Website', 'Industry', 'Source', 'Score', 'Status', 'Date', 'Archived'];
     const rows = leads.map((l) => [
-      l.full_name,
-      l.email,
-      l.phone || '',
-      l.website || '',
-      l.industry || '',
-      l.source || '',
+      escapeCSVField(l.full_name),
+      escapeCSVField(l.email),
+      escapeCSVField(l.phone || ''),
+      escapeCSVField(l.website || ''),
+      escapeCSVField(l.industry || ''),
+      escapeCSVField(l.source || ''),
       l.lead_score?.toString() || '0',
-      l.qualification_status || '',
+      escapeCSVField(l.qualification_status || ''),
       format(new Date(l.created_at), 'yyyy-MM-dd'),
       l.archived ? 'Yes' : 'No',
     ]);
 
     const csv = [headers, ...rows].map((row) => row.join(',')).join('\n');
-    const blob = new Blob([csv], { type: 'text/csv' });
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;

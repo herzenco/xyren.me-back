@@ -6,16 +6,19 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, MessageSquare, Globe, Sparkles, Send } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
 
 const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL;
 
 export default function TestFunctions() {
   const { toast } = useToast();
+  const { session } = useAuth();
 
   // Chat state
   const [chatMessages, setChatMessages] = useState<{ role: string; content: string }[]>([]);
   const [chatInput, setChatInput] = useState('');
   const [chatLoading, setChatLoading] = useState(false);
+  const [sessionId] = useState(() => crypto.randomUUID());
 
   // Scrape state
   const [scrapeUrl, setScrapeUrl] = useState('');
@@ -23,9 +26,18 @@ export default function TestFunctions() {
   const [scrapeLoading, setScrapeLoading] = useState(false);
 
   // Enrich state
-  const [enrichMarkdown, setEnrichMarkdown] = useState('');
+  const [enrichLeadId, setEnrichLeadId] = useState('');
+  const [enrichUrl, setEnrichUrl] = useState('');
   const [enrichResult, setEnrichResult] = useState('');
   const [enrichLoading, setEnrichLoading] = useState(false);
+
+  const getAuthHeaders = (): HeadersInit => {
+    const headers: HeadersInit = { 'Content-Type': 'application/json' };
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    return headers;
+  };
 
   // Chat streaming test
   const handleChat = async () => {
@@ -39,8 +51,11 @@ export default function TestFunctions() {
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ messages: [...chatMessages, userMessage] }),
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ 
+          messages: [...chatMessages, userMessage],
+          sessionId, // Include sessionId as required by the chat function
+        }),
       });
 
       if (!response.ok) {
@@ -116,18 +131,19 @@ export default function TestFunctions() {
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/firecrawl-scrape`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: getAuthHeaders(),
         body: JSON.stringify({ url: scrapeUrl }),
       });
 
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
+      if (!response.ok) {
         throw new Error(data.error || `HTTP ${response.status}`);
       }
 
-      setScrapeResult(data.markdown || 'No content returned');
-      setEnrichMarkdown(data.markdown || ''); // Pre-fill for enrich test
+      const markdown = data.data?.markdown || data.markdown || 'No content returned';
+      setScrapeResult(markdown);
+      setEnrichUrl(scrapeUrl); // Pre-fill for enrich test
       toast({ title: 'Scrape Success', description: `Scraped ${scrapeUrl}` });
     } catch (error) {
       console.error('Scrape error:', error);
@@ -141,9 +157,16 @@ export default function TestFunctions() {
     }
   };
 
-  // Enrich test
+  // Enrich test - now uses leadId and url as required by the API
   const handleEnrich = async () => {
-    if (!enrichMarkdown.trim()) return;
+    if (!enrichLeadId.trim() || !enrichUrl.trim()) {
+      toast({
+        title: 'Missing Fields',
+        description: 'Both Lead ID and URL are required',
+        variant: 'destructive',
+      });
+      return;
+    }
 
     setEnrichLoading(true);
     setEnrichResult('');
@@ -151,18 +174,18 @@ export default function TestFunctions() {
     try {
       const response = await fetch(`${SUPABASE_URL}/functions/v1/enrich-lead`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ markdown: enrichMarkdown, url: scrapeUrl }),
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ leadId: enrichLeadId, url: enrichUrl }),
       });
 
       const data = await response.json();
 
-      if (!response.ok || !data.success) {
+      if (!response.ok) {
         throw new Error(data.error || `HTTP ${response.status}`);
       }
 
-      setEnrichResult(JSON.stringify(data.data, null, 2));
-      toast({ title: 'Enrich Success', description: 'Lead data extracted' });
+      setEnrichResult(JSON.stringify(data, null, 2));
+      toast({ title: 'Enrich Success', description: 'Lead data extracted and updated' });
     } catch (error) {
       console.error('Enrich error:', error);
       toast({
@@ -179,6 +202,12 @@ export default function TestFunctions() {
     <div className="min-h-screen bg-background p-6">
       <div className="mx-auto max-w-4xl">
         <h1 className="mb-6 text-3xl font-bold">Edge Function Tests</h1>
+        
+        {!session && (
+          <div className="mb-4 rounded-lg border border-yellow-500/50 bg-yellow-500/10 p-4 text-yellow-600 dark:text-yellow-400">
+            <strong>Note:</strong> You must be logged in as an admin to test secured edge functions.
+          </div>
+        )}
 
         <Tabs defaultValue="chat" className="space-y-4">
           <TabsList className="grid w-full grid-cols-3">
@@ -198,7 +227,7 @@ export default function TestFunctions() {
             <Card>
               <CardHeader>
                 <CardTitle>Chat Streaming Test</CardTitle>
-                <CardDescription>Test the Lovable AI chat with streaming responses</CardDescription>
+                <CardDescription>Test the Lovable AI chat with streaming responses (Session ID: {sessionId.slice(0, 8)}...)</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="h-64 overflow-y-auto rounded-lg border bg-muted/50 p-4 space-y-3">
@@ -242,7 +271,7 @@ export default function TestFunctions() {
             <Card>
               <CardHeader>
                 <CardTitle>Firecrawl Scrape Test</CardTitle>
-                <CardDescription>Test website scraping via Firecrawl API</CardDescription>
+                <CardDescription>Test website scraping via Firecrawl API (requires admin auth)</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
                 <div className="flex gap-2">
@@ -272,28 +301,41 @@ export default function TestFunctions() {
             <Card>
               <CardHeader>
                 <CardTitle>Lead Enrichment Test</CardTitle>
-                <CardDescription>Test AI-powered lead data extraction from website content</CardDescription>
+                <CardDescription>Test AI-powered lead data extraction (requires admin auth, leadId, and URL)</CardDescription>
               </CardHeader>
               <CardContent className="space-y-4">
-                <Textarea
-                  className="h-32 font-mono text-xs"
-                  placeholder="Paste website markdown content here (or scrape a URL first)"
-                  value={enrichMarkdown}
-                  onChange={(e) => setEnrichMarkdown(e.target.value)}
-                  disabled={enrichLoading}
-                />
-                <Button onClick={handleEnrich} disabled={enrichLoading || !enrichMarkdown.trim()}>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Lead ID</label>
+                    <Input
+                      placeholder="UUID of the lead to enrich"
+                      value={enrichLeadId}
+                      onChange={(e) => setEnrichLeadId(e.target.value)}
+                      disabled={enrichLoading}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-sm font-medium mb-1 block">Website URL</label>
+                    <Input
+                      placeholder="https://example.com"
+                      value={enrichUrl}
+                      onChange={(e) => setEnrichUrl(e.target.value)}
+                      disabled={enrichLoading}
+                    />
+                  </div>
+                </div>
+                <Button onClick={handleEnrich} disabled={enrichLoading || !enrichLeadId.trim() || !enrichUrl.trim()}>
                   {enrichLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Extracting...
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" /> Enriching...
                     </>
                   ) : (
-                    'Extract Lead Data'
+                    'Enrich Lead'
                   )}
                 </Button>
                 {enrichResult && (
                   <div className="rounded-lg border bg-muted/50 p-4">
-                    <p className="text-xs font-medium mb-2 text-muted-foreground">Extracted Data:</p>
+                    <p className="text-xs font-medium mb-2 text-muted-foreground">Result:</p>
                     <pre className="text-sm whitespace-pre-wrap">{enrichResult}</pre>
                   </div>
                 )}
