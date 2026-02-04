@@ -217,7 +217,10 @@ Deno.serve(async (req) => {
           console.log('Sending lead to Zapier:', realEmail, detectedName);
           fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/zapier-webhook`, {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: { 
+              'Content-Type': 'application/json',
+              'x-internal-secret': Deno.env.get('INTERNAL_SECRET') || '',
+            },
             body: JSON.stringify({
               id: leadId,
               email: realEmail,
