@@ -19,57 +19,7 @@
    qualification_status?: string | null;
  }
  
- async function verifyAuthorization(req: Request): Promise<{ authorized: boolean; error?: string; status?: number }> {
-   // Check for internal secret header (service-to-service / database trigger calls)
-   const internalSecret = req.headers.get('x-internal-secret');
-   const expectedSecret = Deno.env.get('INTERNAL_SECRET');
-   
-   if (internalSecret && expectedSecret && internalSecret === expectedSecret) {
-     return { authorized: true };
-   }
- 
-   // Check for service role key (used by database triggers via pg_net)
-   const authHeader = req.headers.get('Authorization');
-   const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-   if (authHeader && serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`) {
-     return { authorized: true };
-   }
- 
-   // Check for JWT auth with admin role (user-initiated calls)
-   if (!authHeader?.startsWith('Bearer ')) {
-     return { authorized: false, error: 'Unauthorized', status: 401 };
-   }
- 
-   const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-   const supabaseAnonKey = Deno.env.get('SUPABASE_ANON_KEY')!;
-   
-   const supabase = createClient(supabaseUrl, supabaseAnonKey, {
-     global: { headers: { Authorization: authHeader } }
-   });
- 
-   const token = authHeader.replace('Bearer ', '');
-   const { data: claimsData, error: claimsError } = await supabase.auth.getClaims(token);
-   
-   if (claimsError || !claimsData?.claims) {
-     return { authorized: false, error: 'Unauthorized', status: 401 };
-   }
- 
-   const userId = claimsData.claims.sub;
- 
-   const { data: roles } = await supabase
-     .from('user_roles')
-     .select('role')
-     .eq('user_id', userId)
-     .eq('role', 'admin');
- 
-   if (!roles || roles.length === 0) {
-     return { authorized: false, error: 'Forbidden: Admin role required', status: 403 };
-   }
- 
-   return { authorized: true };
- }
- 
-function formatSource(source: string | null | undefined): string {
+ function formatSource(source: string | null | undefined): string {
    const sourceMap: Record<string, string> = {
      hero_modal: 'Hero Form',
      project_plan_modal: 'Project Plan',
@@ -83,17 +33,10 @@ function formatSource(source: string | null | undefined): string {
      return new Response(null, { headers: corsHeaders });
    }
  
-   const auth = await verifyAuthorization(req);
-   if (!auth.authorized) {
-     return new Response(JSON.stringify({ error: auth.error }), {
-       status: auth.status,
-       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-     });
-   }
- 
    try {
-     const leadData: LeadData = await req.json();
-     
+    const body = await req.json();
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
      const clickupApiKey = Deno.env.get('CLICKUP_API_KEY');
      const clickupListId = Deno.env.get('CLICKUP_LIST_ID');
      
@@ -113,6 +56,40 @@ function formatSource(source: string | null | undefined): string {
        );
      }
  
+    // Fetch lead data from database using service role
+    const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    const leadId = body.id;
+    if (!leadId) {
+      return new Response(
+        JSON.stringify({ success: false, error: 'Lead ID required' }), 
+        { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    const { data: leadData, error: fetchError } = await supabase
+      .from('leads')
+      .select('*')
+      .eq('id', leadId)
+      .single();
+
+    if (fetchError || !leadData) {
+      console.error('Failed to fetch lead:', fetchError);
+      return new Response(
+        JSON.stringify({ success: false, error: 'Lead not found' }), 
+        { status: 404, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
+    // Skip if already synced to ClickUp
+    if (leadData.clickup_task_id) {
+      console.log('Lead already synced to ClickUp:', leadData.email, leadData.clickup_task_id);
+      return new Response(
+        JSON.stringify({ success: true, skipped: true, taskId: leadData.clickup_task_id }), 
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
      console.log('Creating ClickUp task for lead:', leadData.email, leadData.full_name);
  
      // Build task description with all lead details
@@ -156,6 +133,16 @@ function formatSource(source: string | null | undefined): string {
      const taskData = await response.json();
      console.log('ClickUp task created successfully:', taskData.id, 'for lead:', leadData.email);
      
+    // Update lead with ClickUp task info
+    await supabase
+      .from('leads')
+      .update({
+        clickup_task_id: taskData.id,
+        clickup_task_url: taskData.url,
+        clickup_synced_at: new Date().toISOString(),
+      })
+      .eq('id', leadId);
+
      return new Response(
        JSON.stringify({ success: true, taskId: taskData.id, taskUrl: taskData.url }), 
        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
