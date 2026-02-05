@@ -210,28 +210,6 @@ Deno.serve(async (req) => {
             }
           }
         }
-
-        // Send to Zapier if we have a real email (not placeholder) - works for both new and updated leads
-        const realEmail = detectedEmail || (existingLead?.email && !existingLead.email.includes('@chatbot.temp') ? existingLead.email : null);
-        if (realEmail && leadId) {
-          console.log('Sending lead to Zapier:', realEmail, detectedName);
-          fetch(`${Deno.env.get('SUPABASE_URL')}/functions/v1/zapier-webhook`, {
-            method: 'POST',
-            headers: { 
-              'Content-Type': 'application/json',
-              'x-internal-secret': Deno.env.get('INTERNAL_SECRET') || '',
-            },
-            body: JSON.stringify({
-              id: leadId,
-              email: realEmail,
-              full_name: detectedName,
-              phone: detectedPhone || existingLead?.phone,
-              website: detectedWebsite || existingLead?.website,
-              source: 'chatbot',
-              lead_score: leadScore,
-            }),
-          }).catch(e => console.error('Zapier webhook failed:', e));
-        }
       } catch (dbError) {
         console.error('Database error:', dbError);
       }

@@ -91,7 +91,8 @@ Configure these in Lovable Cloud backend settings:
 - `INTERNAL_SECRET` - For service-to-service authentication
 - `FIRECRAWL_API_KEY` - For website scraping functionality
 - `LOVABLE_API_KEY` - For AI-powered features
-- `ZAPIER_WEBHOOK_URL` - (Optional) For Zapier integrations
+- `CLICKUP_API_KEY` - For ClickUp task creation
+- `CLICKUP_LIST_ID` - Target ClickUp list for new leads
 
 ## License
 
