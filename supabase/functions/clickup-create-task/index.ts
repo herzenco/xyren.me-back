@@ -131,7 +131,6 @@ function formatSource(source: string | null | undefined): string {
      const taskPayload = {
        name: `New Lead: ${leadData.full_name}`,
        description: descriptionParts.join('\n'),
-       status: 'to do',
        priority: leadData.lead_score && leadData.lead_score >= 70 ? 1 : 
                  leadData.lead_score && leadData.lead_score >= 40 ? 2 : 3,
      };
