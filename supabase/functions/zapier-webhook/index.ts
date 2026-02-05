@@ -5,17 +5,23 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type, x-internal-secret',
 };
 
-async function verifyAuthorization(req: Request): Promise<{ authorized: boolean; error?: string; status?: number }> {
+async function verifyAuthorization(req: Request): Promise<{ authorized: boolean; error?: string; status?: number; source?: string }> {
   // Check for internal secret header first (service-to-service calls)
   const internalSecret = req.headers.get('x-internal-secret');
   const expectedSecret = Deno.env.get('INTERNAL_SECRET');
   
   if (internalSecret && expectedSecret && internalSecret === expectedSecret) {
-    return { authorized: true };
+    return { authorized: true, source: 'internal-secret' };
   }
 
-  // Check for JWT auth with admin role
+  // Check for service role key (used by database triggers via pg_net)
   const authHeader = req.headers.get('Authorization');
+  const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+  if (authHeader && serviceRoleKey && authHeader === `Bearer ${serviceRoleKey}`) {
+    return { authorized: true, source: 'service-role' };
+  }
+
+  // Check for JWT auth with admin role (user-initiated calls)
   if (!authHeader?.startsWith('Bearer ')) {
     return { authorized: false, error: 'Unauthorized', status: 401 };
   }
@@ -47,7 +53,7 @@ async function verifyAuthorization(req: Request): Promise<{ authorized: boolean;
     return { authorized: false, error: 'Forbidden: Admin role required', status: 403 };
   }
 
-  return { authorized: true };
+  return { authorized: true, source: 'admin-user' };
 }
 
 interface LeadData {
