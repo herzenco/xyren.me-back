@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { format, subDays, isAfter } from 'date-fns';
 import { motion } from 'framer-motion';
-import { Users, TrendingUp, Zap, FileText, Download, Archive, Trash2 } from 'lucide-react';
+import { Users, TrendingUp, Zap, FileText, Download, Archive, Trash2, ExternalLink, Loader2 } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { StatsCard } from './StatsCard';
 import { AreaChartCard } from './AreaChartCard';
@@ -46,6 +46,9 @@ type Lead = {
   intent_signals: Record<string, boolean> | null;
   engagement_depth: number | null;
   archived: boolean;
+  clickup_task_id: string | null;
+  clickup_task_url: string | null;
+  clickup_synced_at: string | null;
 };
 
 const sourceFilters = [
@@ -154,6 +157,41 @@ export function LeadsTab() {
     },
   });
 
+  const clickupMutation = useMutation({
+    mutationFn: async (leadIds: string[]) => {
+      const results = { success: 0, skipped: 0, failed: 0 };
+      for (const id of leadIds) {
+        try {
+          const { data, error } = await supabase.functions.invoke('clickup-create-task', {
+            body: { id },
+          });
+          if (error) {
+            results.failed++;
+          } else if (data?.skipped) {
+            results.skipped++;
+          } else {
+            results.success++;
+          }
+        } catch {
+          results.failed++;
+        }
+      }
+      return results;
+    },
+    onSuccess: (results) => {
+      queryClient.invalidateQueries({ queryKey: ['leads'] });
+      setSelectedLeads(new Set());
+      const parts = [];
+      if (results.success > 0) parts.push(`${results.success} sent`);
+      if (results.skipped > 0) parts.push(`${results.skipped} already synced`);
+      if (results.failed > 0) parts.push(`${results.failed} failed`);
+      toast.success(`ClickUp sync: ${parts.join(', ')}`);
+    },
+    onError: (error) => {
+      toast.error('Failed to sync to ClickUp: ' + error.message);
+    },
+  });
+
   const stats = useMemo(() => {
     if (!leads) return { total: 0, thisWeek: 0, heroModal: 0, projectPlan: 0 };
 
@@ -201,6 +239,10 @@ export function LeadsTab() {
       newSelected.delete(leadId);
     }
     setSelectedLeads(newSelected);
+  };
+
+  const handleSendToClickUp = () => {
+    clickupMutation.mutate(Array.from(selectedLeads));
   };
 
   const handleArchive = () => {
@@ -304,6 +346,20 @@ export function LeadsTab() {
           <div className="flex items-center gap-2">
             {someSelected && (
               <>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleSendToClickUp}
+                  disabled={clickupMutation.isPending}
+                  className="gap-2"
+                >
+                  {clickupMutation.isPending ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <ExternalLink className="h-4 w-4" />
+                  )}
+                  Send to ClickUp ({selectedLeads.size})
+                </Button>
                 {isViewingArchived ? (
                   <Button
                     variant="outline"
@@ -368,13 +424,14 @@ export function LeadsTab() {
                 <TableHead>Website</TableHead>
                 <TableHead>Industry</TableHead>
                 <TableHead>Source</TableHead>
+                <TableHead>ClickUp</TableHead>
                 <TableHead className="text-right">Date</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {filteredLeads.length === 0 ? (
                 <TableRow>
-                  <TableCell colSpan={9} className="h-32 text-center text-muted-foreground">
+              <TableCell colSpan={10} className="h-32 text-center text-muted-foreground">
                     {isViewingArchived ? 'No archived leads' : 'No leads found'}
                   </TableCell>
                 </TableRow>
@@ -417,6 +474,21 @@ export function LeadsTab() {
                       <span className="rounded-full bg-muted px-2 py-1 text-xs">
                         {formatSource(lead.source || '')}
                       </span>
+                    </TableCell>
+                    <TableCell>
+                      {lead.clickup_task_url ? (
+                        <a
+                          href={lead.clickup_task_url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-xs text-primary hover:underline"
+                        >
+                          <ExternalLink className="h-3 w-3" />
+                          View
+                        </a>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">—</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-right text-muted-foreground">
                       {format(new Date(lead.created_at), 'MMM d, yyyy')}
