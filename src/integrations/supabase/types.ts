@@ -97,6 +97,9 @@ export type Database = {
       leads: {
         Row: {
           archived: boolean
+          clickup_synced_at: string | null
+          clickup_task_id: string | null
+          clickup_task_url: string | null
           created_at: string
           email: string
           engagement_depth: number | null
@@ -114,6 +117,9 @@ export type Database = {
         }
         Insert: {
           archived?: boolean
+          clickup_synced_at?: string | null
+          clickup_task_id?: string | null
+          clickup_task_url?: string | null
           created_at?: string
           email: string
           engagement_depth?: number | null
@@ -131,6 +137,9 @@ export type Database = {
         }
         Update: {
           archived?: boolean
+          clickup_synced_at?: string | null
+          clickup_task_id?: string | null
+          clickup_task_url?: string | null
           created_at?: string
           email?: string
           engagement_depth?: number | null
