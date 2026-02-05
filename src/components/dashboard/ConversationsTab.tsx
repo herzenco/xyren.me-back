@@ -2,7 +2,7 @@ import { useMemo, useState, useEffect } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { format, subDays, isAfter, parseISO } from 'date-fns';
 import { motion } from 'framer-motion';
-import { MessageSquare, Users, Link2, UserCheck, Search, Calendar } from 'lucide-react';
+import { MessageSquare, Link2, UserCheck, Search, Calendar, Flame, ThermometerSun } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { StatsCard } from './StatsCard';
 import { ConversationDetailModal } from './ConversationDetailModal';
@@ -200,16 +200,34 @@ export function ConversationsTab() {
     });
   }, [groupedSessions, searchQuery, filterType, dateRange]);
 
-  // Stats
+  // Stats - including chat stats
   const stats = useMemo(() => {
-    if (!groupedSessions.length) return { total: 0, withLead: 0, withUrl: 0, thisWeek: 0 };
+    if (!groupedSessions.length) return { total: 0, withLead: 0, withUrl: 0, thisWeek: 0, hot: 0, warm: 0 };
 
     const weekAgo = subDays(new Date(), 7);
+    
+    // Count hot and warm leads from interactions
+    let hotCount = 0;
+    let warmCount = 0;
+    
+    for (const session of groupedSessions) {
+      for (const interaction of session.interactions) {
+        const metadata = interaction.metadata as { lead_score?: number } | null;
+        const score = metadata?.lead_score;
+        if (score !== undefined) {
+          if (score >= 70) hotCount++;
+          else if (score >= 40) warmCount++;
+        }
+      }
+    }
+    
     return {
       total: groupedSessions.length,
       withLead: groupedSessions.filter(s => s.lead_id).length,
       withUrl: groupedSessions.filter(s => s.has_url_scraped).length,
       thisWeek: groupedSessions.filter(s => isAfter(parseISO(s.started_at), weekAgo)).length,
+      hot: hotCount,
+      warm: warmCount,
     };
   }, [groupedSessions]);
 
@@ -220,11 +238,13 @@ export function ConversationsTab() {
   return (
     <div className="space-y-6">
       {/* Stats Row */}
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-6">
         <StatsCard title="Total Conversations" value={stats.total} icon={MessageSquare} />
         <StatsCard title="This Week" value={stats.thisWeek} icon={Calendar} />
         <StatsCard title="Linked to Lead" value={stats.withLead} icon={UserCheck} />
         <StatsCard title="URLs Scraped" value={stats.withUrl} icon={Link2} />
+        <StatsCard title="Hot Leads" value={stats.hot} icon={Flame} />
+        <StatsCard title="Warm Leads" value={stats.warm} icon={ThermometerSun} />
       </div>
 
       {/* Filters */}

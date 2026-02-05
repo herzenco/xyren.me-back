@@ -82,6 +82,16 @@ To connect a custom domain, navigate to **Project → Settings → Domains** and
 - Never commit `.env` files with real credentials
 - Use `.env.example` as a template for required environment variables
 - All secrets are managed through Lovable Cloud
+- Edge functions require admin authentication (JWT with admin role) or internal secret header
+- Public access to edge functions is prohibited
+
+### Required Backend Secrets
+
+Configure these in Lovable Cloud backend settings:
+- `INTERNAL_SECRET` - For service-to-service authentication
+- `FIRECRAWL_API_KEY` - For website scraping functionality
+- `LOVABLE_API_KEY` - For AI-powered features
+- `ZAPIER_WEBHOOK_URL` - (Optional) For Zapier integrations
 
 ## License
 

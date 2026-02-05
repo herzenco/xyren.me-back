@@ -122,7 +122,7 @@ export function ConversationDetailModal({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-2xl max-h-[85vh] flex flex-col p-0">
+      <DialogContent className="max-w-2xl h-[85vh] flex flex-col p-0 overflow-hidden">
         <DialogHeader className="p-6 pb-0">
           <DialogTitle className="flex items-center gap-2">
             <MessageSquare className="h-5 w-5 text-primary" />
@@ -240,8 +240,8 @@ export function ConversationDetailModal({
           )}
 
           {/* Chat Messages */}
-          <ScrollArea className="flex-1 px-6 py-4">
-            <div className="space-y-4">
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+            <div className="space-y-4 pb-4">
               {conversation_history.length > 0 ? (
                 conversation_history.map((message, index) => (
                   <ChatBubble key={index} message={message} />
@@ -262,7 +262,7 @@ export function ConversationDetailModal({
                   ))
               )}
             </div>
-          </ScrollArea>
+          </div>
 
           {/* Footer with session info */}
           <div className="px-6 py-3 border-t border-border bg-muted/20 text-xs text-muted-foreground">

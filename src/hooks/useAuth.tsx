@@ -38,14 +38,16 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const checkAdminRole = async (userId: string) => {
       try {
+        // Explicitly query for admin role - isAdmin is true if ANY admin row exists
         const rolePromise = supabase
           .from('user_roles')
           .select('role')
           .eq('user_id', userId)
-          .maybeSingle();
+          .eq('role', 'admin');
 
         const { data: roles } = await withTimeout(rolePromise, 4000, 'Role check');
-        if (mounted) setIsAdmin(roles?.role === 'admin');
+        // isAdmin is true if we found at least one admin role entry
+        if (mounted) setIsAdmin(Array.isArray(roles) && roles.length > 0);
       } catch (error) {
         console.warn('Role check failed:', error);
         if (mounted) setIsAdmin(false);
