@@ -52,6 +52,30 @@ Deno.serve(async (req) => {
   }
 
   try {
+    // Verify secret key from query parameter or header
+    const url = new URL(req.url);
+    const secretFromQuery = url.searchParams.get('key') || url.searchParams.get('google_key');
+    const secretFromHeader = req.headers.get('x-webhook-secret');
+    const providedSecret = secretFromQuery || secretFromHeader;
+    
+    const expectedSecret = Deno.env.get('GOOGLE_WEBHOOK_SECRET');
+    
+    if (!expectedSecret) {
+      console.error('GOOGLE_WEBHOOK_SECRET not configured');
+      return new Response(
+        JSON.stringify({ error: 'Webhook not configured' }),
+        { status: 500, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+    
+    if (providedSecret !== expectedSecret) {
+      console.error('Invalid or missing webhook secret');
+      return new Response(
+        JSON.stringify({ error: 'Unauthorized' }),
+        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL')!,
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
